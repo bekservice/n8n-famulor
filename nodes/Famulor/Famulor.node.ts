@@ -9,6 +9,39 @@ import {
 	NodeOperationError,
 } from 'n8n-workflow';
 
+// Helper function for retry logic with rate limiting
+async function makeRequestWithRetry(
+	context: IExecuteFunctions,
+	options: any,
+	maxRetries = 3,
+	baseDelay = 1000
+): Promise<any> {
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			return await context.helpers.request(options);
+		} catch (error: any) {
+			// Check if this is a rate limit error (429)
+			if (error.statusCode === 429 || (error.message && error.message.includes('429'))) {
+				if (attempt < maxRetries) {
+					// Extract retry_after from error message if available
+					let retryAfter = baseDelay;
+					const retryMatch = error.message.match(/"retry_after":(\d+)/);
+					if (retryMatch) {
+						retryAfter = parseInt(retryMatch[1]) * 1000; // Convert to milliseconds
+					}
+
+					// Wait before retrying with exponential backoff
+					const delay = Math.min(retryAfter * (attempt + 1), 10000); // Max 10 seconds
+					await new Promise(resolve => (globalThis as any).setTimeout(resolve, delay));
+					continue;
+				}
+			}
+			// If not a rate limit error or max retries reached, throw the error
+			throw error;
+		}
+	}
+}
+
 export class Famulor implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Famulor',
@@ -255,7 +288,7 @@ export class Famulor implements INodeType {
 							json: true,
 						};
 
-						const response = await this.helpers.request(options);
+						const response = await makeRequestWithRetry(this, options);
 						returnData.push({ json: response });
 
 					} else {
@@ -277,7 +310,7 @@ export class Famulor implements INodeType {
 							json: true,
 						};
 
-						const response = await this.helpers.request(options);
+						const response = await makeRequestWithRetry(this, options);
 
 						if (!Array.isArray(response)) {
 							throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });

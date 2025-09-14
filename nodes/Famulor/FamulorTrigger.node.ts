@@ -73,7 +73,30 @@ export class FamulorTrigger implements INodeType {
 				const credentials = await this.getCredentials('famulorApi');
 
 				try {
-					const response = await this.helpers.request({
+					// Helper function for retry logic with rate limiting
+					const makeRequestWithRetry = async (options: any, maxRetries = 3, baseDelay = 1000): Promise<any> => {
+						for (let attempt = 0; attempt <= maxRetries; attempt++) {
+							try {
+								return await this.helpers.request(options);
+							} catch (error: any) {
+								if (error.statusCode === 429 || (error.message && error.message.includes('429'))) {
+									if (attempt < maxRetries) {
+										let retryAfter = baseDelay;
+										const retryMatch = error.message.match(/"retry_after":(\d+)/);
+										if (retryMatch) {
+											retryAfter = parseInt(retryMatch[1]) * 1000;
+										}
+										const delay = Math.min(retryAfter * (attempt + 1), 10000);
+										await new Promise(resolve => (globalThis as any).setTimeout(resolve, delay));
+										continue;
+									}
+								}
+								throw error;
+							}
+						}
+					};
+
+					const response = await makeRequestWithRetry({
 						method: 'GET',
 						uri: 'https://app.famulor.de/api/user/assistants',
 						headers: {

@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-famulor",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "n8n community node for Famulor - Automate phone calls using AI calling platform",
   "keywords": [
     "n8n-community-node-package",
@@ -12,14 +12,14 @@
     "ai phone calling"
   ],
   "license": "MIT",
-  "homepage": "https://famulor.de/",
+  "homepage": "https://famulor.io/",
   "author": {
-    "name": "Zebi15",
-    "email": "eusebiuapostol@gmail.com"
+    "name": "bekservice",
+    "email": "info@bekservice.de"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Zebi15/n8n-famulor.git"
+    "url": "https://github.com/bekservice/n8n-famulor.git"
   },
   "engines": {
     "node": ">=20.15"
