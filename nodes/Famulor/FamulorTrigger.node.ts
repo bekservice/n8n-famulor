@@ -7,6 +7,7 @@ import {
 	IWebhookResponseData,
 	NodeConnectionType,
 	NodeOperationError,
+	sleep,
 } from 'n8n-workflow';
 
 export class FamulorTrigger implements INodeType {
@@ -70,14 +71,12 @@ export class FamulorTrigger implements INodeType {
 	methods = {
 		loadOptions: {
 			async getAssistants(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const credentials = await this.getCredentials('famulorApi');
-
 				try {
 					// Helper function for retry logic with rate limiting
 					const makeRequestWithRetry = async (options: any, maxRetries = 3, baseDelay = 1000): Promise<any> => {
 						for (let attempt = 0; attempt <= maxRetries; attempt++) {
 							try {
-								return await this.helpers.request(options);
+								return await this.helpers.httpRequestWithAuthentication.call(this, 'famulorApi', options);
 							} catch (error: any) {
 								if (error.statusCode === 429 || (error.message && error.message.includes('429'))) {
 									if (attempt < maxRetries) {
@@ -87,7 +86,7 @@ export class FamulorTrigger implements INodeType {
 											retryAfter = parseInt(retryMatch[1]) * 1000;
 										}
 										const delay = Math.min(retryAfter * (attempt + 1), 10000);
-										await new Promise(resolve => (globalThis as any).setTimeout(resolve, delay));
+										await sleep(delay);
 										continue;
 									}
 								}
@@ -98,11 +97,7 @@ export class FamulorTrigger implements INodeType {
 
 					const response = await makeRequestWithRetry({
 						method: 'GET',
-						uri: 'https://app.famulor.de/api/user/assistants',
-						headers: {
-							'Authorization': `Bearer ${credentials.apiKey}`,
-							'Content-Type': 'application/json',
-						},
+						url: 'https://app.famulor.de/api/user/assistants',
 						json: true,
 					});
 

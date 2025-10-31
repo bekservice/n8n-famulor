@@ -7,6 +7,7 @@ import {
 	INodeTypeDescription,
 	NodeConnectionType,
 	NodeOperationError,
+	sleep,
 } from 'n8n-workflow';
 
 // Helper function for retry logic with rate limiting
@@ -18,7 +19,7 @@ async function makeRequestWithRetry(
 ): Promise<any> {
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
-			return await context.helpers.request(options);
+			return await context.helpers.httpRequestWithAuthentication.call(context, 'famulorApi', options);
 		} catch (error: any) {
 			// Check if this is a rate limit error (429)
 			if (error.statusCode === 429 || (error.message && error.message.includes('429'))) {
@@ -32,7 +33,7 @@ async function makeRequestWithRetry(
 
 					// Wait before retrying with exponential backoff
 					const delay = Math.min(retryAfter * (attempt + 1), 10000); // Max 10 seconds
-					await new Promise(resolve => (globalThis as any).setTimeout(resolve, delay));
+					await sleep(delay);
 					continue;
 				}
 			}
@@ -208,20 +209,14 @@ export class Famulor implements INodeType {
 	methods = {
 		loadOptions: {
 			async getOutboundAssistants(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const credentials = await this.getCredentials('famulorApi');
-
 				const options = {
 					method: 'GET' as const,
-					headers: {
-						'Authorization': `Bearer ${credentials.apiKey}`,
-						'Content-Type': 'application/json',
-					},
-					uri: 'https://app.famulor.de/api/user/assistants/outbound',
+					url: 'https://app.famulor.de/api/user/assistants/outbound',
 					json: true,
 				};
 
 				try {
-					const response = await this.helpers.request(options);
+					const response = await this.helpers.httpRequestWithAuthentication.call(this, 'famulorApi', options);
 
 					if (!Array.isArray(response)) {
 						throw new NodeOperationError(this.getNode(), 'Invalid response format');
@@ -250,7 +245,6 @@ export class Famulor implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
-		const credentials = await this.getCredentials('famulorApi');
 
 		for (let i = 0; i < items.length; i++) {
 			const resource = this.getNodeParameter('resource', i) as string;
@@ -263,33 +257,32 @@ export class Famulor implements INodeType {
 						const phoneNumber = this.getNodeParameter('phoneNumber', i) as string;
 						const variablesCollection = this.getNodeParameter('variables', i) as { variables: Array<{ name: string; value: string }> };
 
-						// Convert variables from collection format to object format expected by API
-						const variables: { [key: string]: string } = {};
-						if (variablesCollection.variables) {
-							variablesCollection.variables.forEach(variable => {
-								if (variable.name && variable.value) {
-									variables[variable.name] = variable.value;
-								}
-							});
-						}
+					// Convert variables from collection format to object format expected by API
+					const variables: { [key: string]: string } = {};
+					if (variablesCollection.variables) {
+						variablesCollection.variables.forEach(variable => {
+							if (variable.name && variable.value) {
+								variables[variable.name] = variable.value;
+							}
+						});
+					}
 
-						const options = {
-							method: 'POST' as const,
-							headers: {
-								'Authorization': `Bearer ${credentials.apiKey}`,
-								'Content-Type': 'application/json',
-							},
-							uri: 'https://app.famulor.de/api/user/make_call',
-							body: {
-								assistant_id: assistant,
-								phone_number: phoneNumber,
-								variables: variables,
-							},
-							json: true,
-						};
+					const options = {
+						method: 'POST' as const,
+						url: 'https://app.famulor.de/api/user/make_call',
+						body: {
+							assistant_id: assistant,
+							phone_number: phoneNumber,
+							variables: variables,
+						},
+						json: true,
+					};
 
-						const response = await makeRequestWithRetry(this, options);
-						returnData.push({ json: response });
+					const response = await makeRequestWithRetry(this, options);
+					returnData.push({ 
+						json: response,
+						pairedItem: { item: i }
+					});
 
 					} else {
 						throw new NodeOperationError(
@@ -298,28 +291,27 @@ export class Famulor implements INodeType {
 							{ itemIndex: i },
 						);
 					}
-				} else if (resource === 'assistant') {
-					if (operation === 'getAssistants') {
-						const options = {
-							method: 'GET' as const,
-							headers: {
-								'Authorization': `Bearer ${credentials.apiKey}`,
-								'Content-Type': 'application/json',
-							},
-							uri: 'https://app.famulor.de/api/user/assistants',
-							json: true,
-						};
+			} else if (resource === 'assistant') {
+				if (operation === 'getAssistants') {
+					const options = {
+						method: 'GET' as const,
+						url: 'https://app.famulor.de/api/user/assistants',
+						json: true,
+					};
 
-						const response = await makeRequestWithRetry(this, options);
+					const response = await makeRequestWithRetry(this, options);
 
-						if (!Array.isArray(response)) {
-							throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
-						}
+					if (!Array.isArray(response)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
+					}
 
-						// Return each assistant as a separate item
-						response.forEach((assistant: any) => {
-							returnData.push({ json: assistant });
+					// Return each assistant as a separate item
+					response.forEach((assistant: any) => {
+						returnData.push({ 
+							json: assistant,
+							pairedItem: { item: i }
 						});
+					});
 
 					} else {
 						throw new NodeOperationError(
