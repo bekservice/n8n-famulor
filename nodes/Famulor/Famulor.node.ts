@@ -55,6 +55,7 @@ export class Famulor implements INodeType {
 		defaults: {
 			name: 'Famulor',
 		},
+		usableAsTool: true,
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		credentials: [
@@ -210,7 +211,7 @@ export class Famulor implements INodeType {
 		loadOptions: {
 			async getOutboundAssistants(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const options = {
-					method: 'GET' as const,
+					method: 'GET' as 'GET',
 					url: 'https://app.famulor.de/api/user/assistants/outbound',
 					json: true,
 				};
@@ -268,7 +269,7 @@ export class Famulor implements INodeType {
 					}
 
 					const options = {
-						method: 'POST' as const,
+						method: 'POST' as 'POST',
 						url: 'https://app.famulor.de/api/user/make_call',
 						body: {
 							assistant_id: assistant,
@@ -294,7 +295,7 @@ export class Famulor implements INodeType {
 			} else if (resource === 'assistant') {
 				if (operation === 'getAssistants') {
 					const options = {
-						method: 'GET' as const,
+						method: 'GET' as 'GET',
 						url: 'https://app.famulor.de/api/user/assistants',
 						json: true,
 					};
@@ -326,11 +327,14 @@ export class Famulor implements INodeType {
 					});
 				}
 
-			} catch (error) {
-				if (this.continueOnFail()) {
-					returnData.push({ json: { error: error.message } });
-					continue;
-				}
+		} catch (error) {
+			if (this.continueOnFail()) {
+				returnData.push({ 
+					json: { error: error.message },
+					pairedItem: { item: i }
+				});
+				continue;
+			}
 				throw new NodeOperationError(this.getNode(), `Failed to execute ${resource}:${operation}: ${error.message}`, {
 					itemIndex: i,
 				});
