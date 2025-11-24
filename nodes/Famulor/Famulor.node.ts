@@ -83,6 +83,10 @@ export class Famulor implements INodeType {
 					name: 'Campaign',
 					value: 'campaign',
 				},
+				{
+					name: 'SMS',
+					value: 'sms',
+				},
 			],
 			default: 'call',
 			},
@@ -181,6 +185,28 @@ export class Famulor implements INodeType {
 				},
 			],
 			default: 'list',
+		},
+
+		// SMS Operations
+		{
+			displayName: 'Operation',
+			name: 'operation',
+			type: 'options',
+			noDataExpression: true,
+			displayOptions: {
+				show: {
+					resource: ['sms'],
+				},
+			},
+			options: [
+				{
+					name: 'Send',
+					value: 'send',
+					description: 'Send an SMS message',
+					action: 'Send an SMS',
+				},
+			],
+			default: 'send',
 		},
 
 		// Call Get/Delete Fields
@@ -451,8 +477,56 @@ export class Famulor implements INodeType {
 				},
 			],
 			default: 'start',
+		},
+
+		// SMS Send Fields
+		{
+			displayName: 'From Phone Number ID',
+			name: 'fromPhoneNumberId',
+			type: 'number',
+			required: true,
+			displayOptions: {
+				show: {
+					resource: ['sms'],
+					operation: ['send'],
+				},
 			},
-		],
+			default: 0,
+			description: 'The ID of your phone number to send the SMS from (get this from Assistant > Get Phone Numbers)',
+		},
+		{
+			displayName: 'To Phone Number',
+			name: 'toPhoneNumber',
+			type: 'string',
+			required: true,
+			displayOptions: {
+				show: {
+					resource: ['sms'],
+					operation: ['send'],
+				},
+			},
+			default: '',
+			placeholder: '+1234567890',
+			description: 'The recipient\'s phone number in international format',
+		},
+		{
+			displayName: 'Message Body',
+			name: 'messageBody',
+			type: 'string',
+			required: true,
+			displayOptions: {
+				show: {
+					resource: ['sms'],
+					operation: ['send'],
+				},
+			},
+			typeOptions: {
+				rows: 4,
+			},
+			default: '',
+			description: 'The SMS message content (max 300 characters)',
+		},
+	],
 	};
 
 	methods = {
@@ -707,6 +781,36 @@ export class Famulor implements INodeType {
 						body: {
 							campaign_id: campaignId,
 							action: action,
+						},
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+					returnData.push({ 
+						json: response,
+						pairedItem: { item: i }
+					});
+
+				} else {
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
+				}
+			} else if (resource === 'sms') {
+				if (operation === 'send') {
+					const fromPhoneNumberId = this.getNodeParameter('fromPhoneNumberId', i) as number;
+					const toPhoneNumber = this.getNodeParameter('toPhoneNumber', i) as string;
+					const messageBody = this.getNodeParameter('messageBody', i) as string;
+
+					const options = {
+						method: 'POST' as 'POST',
+						url: 'https://app.famulor.de/api/user/sms',
+						body: {
+							from: fromPhoneNumberId,
+							to: toPhoneNumber,
+							body: messageBody,
 						},
 						json: true,
 					};
