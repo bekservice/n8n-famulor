@@ -527,21 +527,24 @@ export class Famulor implements INodeType {
 			default: 'start',
 		},
 
-		// SMS Send Fields
-		{
-			displayName: 'From Phone Number ID',
-			name: 'fromPhoneNumberId',
-			type: 'number',
-			required: true,
-			displayOptions: {
-				show: {
-					resource: ['sms'],
-					operation: ['send'],
-				},
+	// SMS Send Fields
+	{
+		displayName: 'From Phone Number Name or ID',
+		name: 'fromPhoneNumberId',
+		type: 'options',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['sms'],
+				operation: ['send'],
 			},
-			default: 0,
-			description: 'The ID of your phone number to send the SMS from (get this from Assistant > Get Phone Numbers)',
 		},
+		typeOptions: {
+			loadOptionsMethod: 'getPhoneNumbers',
+		},
+		default: '',
+		description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
 		{
 			displayName: 'To Phone Number',
 			name: 'toPhoneNumber',
@@ -607,13 +610,44 @@ export class Famulor implements INodeType {
 						value: assistant.id,
 					}));
 				} catch (error) {
-					throw new NodeOperationError(this.getNode(), `Failed to load assistants: ${error.message}`);
-				}
-			},
+				throw new NodeOperationError(this.getNode(), `Failed to load assistants: ${error.message}`);
+			}
 		},
-	};
+		async getPhoneNumbers(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+			const options = {
+				method: 'GET' as 'GET',
+				url: 'https://app.famulor.de/api/user/assistants/phone-numbers',
+				json: true,
+			};
 
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+			try {
+				const response = await this.helpers.httpRequestWithAuthentication.call(this, 'famulorApi', options);
+
+				if (!Array.isArray(response)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format');
+				}
+
+				if (response.length === 0) {
+					return [
+						{
+							name: 'No Phone Numbers Found. Purchase One First.',
+							value: '',
+						},
+					];
+				}
+
+				return response.map((phoneNumber: any) => ({
+					name: `${phoneNumber.phone_number} (${phoneNumber.type_label})`,
+					value: phoneNumber.id,
+				}));
+			} catch (error) {
+				throw new NodeOperationError(this.getNode(), `Failed to load phone numbers: ${error.message}`);
+			}
+		},
+	},
+};
+
+async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
