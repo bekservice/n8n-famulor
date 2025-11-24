@@ -374,6 +374,18 @@ export class Famulor implements INodeType {
 		},
 		options: [
 			{
+				name: 'Create',
+				value: 'create',
+				description: 'Create a new mid call tool',
+				action: 'Create a tool',
+			},
+			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a mid call tool',
+				action: 'Delete a tool',
+			},
+			{
 				name: 'Get',
 				value: 'get',
 				description: 'Get a specific mid call tool by ID',
@@ -385,11 +397,17 @@ export class Famulor implements INodeType {
 				description: 'List all mid call tools',
 				action: 'List all tools',
 			},
+			{
+				name: 'Update',
+				value: 'update',
+				description: 'Update an existing mid call tool',
+				action: 'Update a tool',
+			},
 		],
 		default: 'list',
 	},
 
-	// Tool Get Fields
+	// Tool Get/Delete/Update Fields
 	{
 		displayName: 'Tool ID',
 		name: 'toolId',
@@ -398,11 +416,330 @@ export class Famulor implements INodeType {
 		displayOptions: {
 			show: {
 				resource: ['tool'],
-				operation: ['get'],
+				operation: ['get', 'delete', 'update'],
 			},
 		},
 		default: 0,
-		description: 'The ID of the tool to retrieve',
+		description: 'The ID of the tool to retrieve, delete or update',
+	},
+
+	// Tool Create Fields
+	{
+		displayName: 'Name',
+		name: 'toolName',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		default: '',
+		placeholder: 'get_weather',
+		description: 'Tool name (lowercase letters and underscores only, must start with letter)',
+	},
+	{
+		displayName: 'Description',
+		name: 'toolDescription',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		typeOptions: {
+			rows: 3,
+		},
+		default: '',
+		description: 'Detailed explanation of when and how the AI should use this tool (max 255 characters)',
+	},
+	{
+		displayName: 'Endpoint',
+		name: 'endpoint',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		default: '',
+		placeholder: 'https://api.example.com/endpoint',
+		description: 'Valid URL of the API endpoint to call',
+	},
+	{
+		displayName: 'Method',
+		name: 'method',
+		type: 'options',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		options: [
+			{ name: 'DELETE', value: 'DELETE' },
+			{ name: 'GET', value: 'GET' },
+			{ name: 'PATCH', value: 'PATCH' },
+			{ name: 'POST', value: 'POST' },
+			{ name: 'PUT', value: 'PUT' },
+		],
+		default: 'GET',
+		description: 'HTTP method',
+	},
+	{
+		displayName: 'Timeout',
+		name: 'timeout',
+		type: 'number',
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		default: 10,
+		description: 'Request timeout in seconds (1-30)',
+		typeOptions: {
+			minValue: 1,
+			maxValue: 30,
+		},
+	},
+	{
+		displayName: 'Headers',
+		name: 'headers',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		default: {},
+		description: 'HTTP headers to send with the request',
+		options: [
+			{
+				displayName: 'Headers',
+				name: 'headers',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'Header name',
+					},
+					{
+						displayName: 'Value',
+						name: 'value',
+						type: 'string',
+						default: '',
+						description: 'Header value',
+					},
+				],
+			},
+		],
+	},
+	{
+		displayName: 'Schema',
+		name: 'schema',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['create'],
+			},
+		},
+		default: {},
+		description: 'Parameters that the AI will extract from conversation',
+		options: [
+			{
+				displayName: 'Parameters',
+				name: 'parameters',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'Parameter name (2-32 chars, letters and underscores)',
+					},
+					{
+						displayName: 'Type',
+						name: 'type',
+						type: 'options',
+						options: [
+							{ name: 'Boolean', value: 'boolean' },
+							{ name: 'Number', value: 'number' },
+							{ name: 'String', value: 'string' },
+						],
+						default: 'string',
+						description: 'Parameter type',
+					},
+					{
+						displayName: 'Description',
+						name: 'description',
+						type: 'string',
+						default: '',
+						description: 'Help AI understand how to extract this parameter (3-255 chars)',
+					},
+				],
+			},
+		],
+	},
+
+	// Tool Update Fields
+	{
+		displayName: 'Update Fields',
+		name: 'updateToolFields',
+		type: 'collection',
+		placeholder: 'Add Field',
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['update'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				default: '',
+				placeholder: 'get_weather',
+				description: 'Tool name (lowercase letters and underscores only)',
+			},
+			{
+				displayName: 'Description',
+				name: 'description',
+				type: 'string',
+				typeOptions: {
+					rows: 3,
+				},
+				default: '',
+				description: 'Tool description (max 255 characters)',
+			},
+			{
+				displayName: 'Endpoint',
+				name: 'endpoint',
+				type: 'string',
+				default: '',
+				placeholder: 'https://api.example.com/endpoint',
+				description: 'API endpoint URL',
+			},
+			{
+				displayName: 'Method',
+				name: 'method',
+				type: 'options',
+				options: [
+					{ name: 'DELETE', value: 'DELETE' },
+					{ name: 'GET', value: 'GET' },
+					{ name: 'PATCH', value: 'PATCH' },
+					{ name: 'POST', value: 'POST' },
+					{ name: 'PUT', value: 'PUT' },
+				],
+				default: 'GET',
+				description: 'HTTP method',
+			},
+			{
+				displayName: 'Timeout',
+				name: 'timeout',
+				type: 'number',
+				default: 10,
+				description: 'Request timeout in seconds (1-30)',
+				typeOptions: {
+					minValue: 1,
+					maxValue: 30,
+				},
+			},
+			{
+				displayName: 'Headers',
+				name: 'headers',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'HTTP headers (replaces existing)',
+				options: [
+					{
+						displayName: 'Headers',
+						name: 'headers',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Header name',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Header value',
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Schema',
+				name: 'schema',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'Parameters schema (replaces existing)',
+				options: [
+					{
+						displayName: 'Parameters',
+						name: 'parameters',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Parameter name',
+							},
+							{
+								displayName: 'Type',
+								name: 'type',
+								type: 'options',
+								options: [
+									{ name: 'Boolean', value: 'boolean' },
+									{ name: 'Number', value: 'number' },
+									{ name: 'String', value: 'string' },
+								],
+								default: 'string',
+								description: 'Parameter type',
+							},
+							{
+								displayName: 'Description',
+								name: 'description',
+								type: 'string',
+								default: '',
+								description: 'Parameter description',
+							},
+						],
+					},
+				],
+			},
+		],
 	},
 
 	// Call Get/Delete Fields
@@ -1251,23 +1588,92 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 						{ itemIndex: i },
 					);
 				}
-			} else if (resource === 'tool') {
-				if (operation === 'get') {
-					const toolId = this.getNodeParameter('toolId', i) as number;
+		} else if (resource === 'tool') {
+			if (operation === 'create') {
+				const toolName = this.getNodeParameter('toolName', i) as string;
+				const toolDescription = this.getNodeParameter('toolDescription', i) as string;
+				const endpoint = this.getNodeParameter('endpoint', i) as string;
+				const method = this.getNodeParameter('method', i) as string;
+				const timeout = this.getNodeParameter('timeout', i, 10) as number;
+				const headersCollection = this.getNodeParameter('headers', i, {}) as { headers?: Array<{ name: string; value: string }> };
+				const schemaCollection = this.getNodeParameter('schema', i, {}) as { parameters?: Array<{ name: string; type: string; description: string }> };
 
-					const options = {
-						method: 'GET' as 'GET',
-						url: `https://app.famulor.de/api/user/tools/${toolId}`,
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-					returnData.push({ 
-						json: response,
-						pairedItem: { item: i }
+				// Build headers array
+				const headers: Array<{ name: string; value: string }> = [];
+				if (headersCollection.headers) {
+					headersCollection.headers.forEach(header => {
+						if (header.name && header.value) {
+							headers.push({ name: header.name, value: header.value });
+						}
 					});
+				}
 
-				} else if (operation === 'list') {
+				// Build schema array
+				const schema: Array<{ name: string; type: string; description: string }> = [];
+				if (schemaCollection.parameters) {
+					schemaCollection.parameters.forEach(param => {
+						if (param.name && param.type && param.description) {
+							schema.push({ 
+								name: param.name, 
+								type: param.type, 
+								description: param.description 
+							});
+						}
+					});
+				}
+
+				const options = {
+					method: 'POST' as 'POST',
+					url: 'https://app.famulor.de/api/user/tools',
+					body: {
+						name: toolName,
+						description: toolDescription,
+						endpoint: endpoint,
+						method: method,
+						timeout: timeout,
+						headers: headers,
+						schema: schema,
+					},
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'delete') {
+				const toolId = this.getNodeParameter('toolId', i) as number;
+
+				const options = {
+					method: 'DELETE' as 'DELETE',
+					url: `https://app.famulor.de/api/user/tools/${toolId}`,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'get') {
+				const toolId = this.getNodeParameter('toolId', i) as number;
+
+				const options = {
+					method: 'GET' as 'GET',
+					url: `https://app.famulor.de/api/user/tools/${toolId}`,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'list') {
 					const options = {
 						method: 'GET' as 'GET',
 						url: 'https://app.famulor.de/api/user/tools',
@@ -1285,21 +1691,93 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 						returnData.push({ 
 							json: tool,
 							pairedItem: { item: i }
-						});
 					});
-
-				} else {
-					throw new NodeOperationError(
-						this.getNode(),
-						`The operation "${operation}" is not known!`,
-						{ itemIndex: i },
-					);
-				}
-			} else {
-				throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not known!`, {
-					itemIndex: i,
 				});
+
+			} else if (operation === 'update') {
+				const toolId = this.getNodeParameter('toolId', i) as number;
+				const updateToolFields = this.getNodeParameter('updateToolFields', i, {}) as {
+					name?: string;
+					description?: string;
+					endpoint?: string;
+					method?: string;
+					timeout?: number;
+					headers?: { headers?: Array<{ name: string; value: string }> };
+					schema?: { parameters?: Array<{ name: string; type: string; description: string }> };
+				};
+
+				// Build the update body
+				const body: any = {};
+
+				if (updateToolFields.name) {
+					body.name = updateToolFields.name;
+				}
+
+				if (updateToolFields.description) {
+					body.description = updateToolFields.description;
+				}
+
+				if (updateToolFields.endpoint) {
+					body.endpoint = updateToolFields.endpoint;
+				}
+
+				if (updateToolFields.method) {
+					body.method = updateToolFields.method;
+				}
+
+				if (updateToolFields.timeout !== undefined) {
+					body.timeout = updateToolFields.timeout;
+				}
+
+				if (updateToolFields.headers && updateToolFields.headers.headers) {
+					const headers: Array<{ name: string; value: string }> = [];
+					updateToolFields.headers.headers.forEach(header => {
+						if (header.name && header.value) {
+							headers.push({ name: header.name, value: header.value });
+						}
+					});
+					body.headers = headers;
+				}
+
+				if (updateToolFields.schema && updateToolFields.schema.parameters) {
+					const schema: Array<{ name: string; type: string; description: string }> = [];
+					updateToolFields.schema.parameters.forEach(param => {
+						if (param.name && param.type && param.description) {
+							schema.push({ 
+								name: param.name, 
+								type: param.type, 
+								description: param.description 
+							});
+						}
+					});
+					body.schema = schema;
+				}
+
+				const options = {
+					method: 'PUT' as 'PUT',
+					url: `https://app.famulor.de/api/user/tools/${toolId}`,
+					body: body,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
 			}
+		} else {
+			throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not known!`, {
+				itemIndex: i,
+			});
+		}
 
 		} catch (error) {
 			if (this.continueOnFail()) {
