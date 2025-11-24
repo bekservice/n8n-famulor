@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-famulor",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "n8n community node for Famulor - Automate phone calls using AI calling platform",
   "keywords": [
     "n8n-community-node-package",

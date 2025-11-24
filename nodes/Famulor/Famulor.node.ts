@@ -402,19 +402,25 @@ export class Famulor implements INodeType {
 						json: true,
 					};
 
-					const response = await makeRequestWithRetry(this, options);
+				const response = await makeRequestWithRetry(this, options);
 
-					if (!response.campaigns || !Array.isArray(response.campaigns)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
-					}
+				// Handle both array response and object with campaigns property
+				let campaigns = response;
+				if (response.campaigns && Array.isArray(response.campaigns)) {
+					campaigns = response.campaigns;
+				}
 
-					// Return each campaign as a separate item
-					response.campaigns.forEach((campaign: any) => {
-						returnData.push({ 
-							json: campaign,
-							pairedItem: { item: i }
-						});
+				if (!Array.isArray(campaigns)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
+				}
+
+				// Return each campaign as a separate item
+				campaigns.forEach((campaign: any) => {
+					returnData.push({ 
+						json: campaign,
+						pairedItem: { item: i }
 					});
+				});
 
 				} else if (operation === 'updateStatus') {
 					const campaignId = this.getNodeParameter('campaignId', i) as number;
