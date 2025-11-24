@@ -87,27 +87,45 @@ export class Famulor implements INodeType {
 			default: 'call',
 			},
 
-			// Call Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['call'],
-					},
+		// Call Operations
+		{
+			displayName: 'Operation',
+			name: 'operation',
+			type: 'options',
+			noDataExpression: true,
+			displayOptions: {
+				show: {
+					resource: ['call'],
 				},
-				options: [
-					{
-						name: 'Make',
-						value: 'make',
-						description: 'Make a phone call using an AI assistant',
-						action: 'Make a phone call',
-					},
-				],
-				default: 'make',
 			},
+			options: [
+				{
+					name: 'Delete',
+					value: 'delete',
+					description: 'Delete a specific call record',
+					action: 'Delete a call',
+				},
+				{
+					name: 'Get',
+					value: 'get',
+					description: 'Get details of a specific call by ID',
+					action: 'Get a call',
+				},
+				{
+					name: 'List',
+					value: 'list',
+					description: 'List all calls with filtering options',
+					action: 'List all calls',
+				},
+				{
+					name: 'Make',
+					value: 'make',
+					description: 'Make a phone call using an AI assistant',
+					action: 'Make a phone call',
+				},
+			],
+			default: 'make',
+		},
 
 		// Assistant Operations
 		{
@@ -126,6 +144,12 @@ export class Famulor implements INodeType {
 					value: 'getAssistants',
 					description: 'Get all assistants from your account',
 					action: 'Get assistants',
+				},
+				{
+					name: 'Get Phone Numbers',
+					value: 'getPhoneNumbers',
+					description: 'Get available phone numbers for assistant assignment',
+					action: 'Get phone numbers',
 				},
 			],
 			default: 'getAssistants',
@@ -159,10 +183,26 @@ export class Famulor implements INodeType {
 			default: 'list',
 		},
 
-			// Call Make Fields
-			{
-				displayName: 'Assistant Name or ID',
-				name: 'assistant',
+		// Call Get/Delete Fields
+		{
+			displayName: 'Call ID',
+			name: 'callId',
+			type: 'number',
+			required: true,
+			displayOptions: {
+				show: {
+					resource: ['call'],
+					operation: ['get', 'delete'],
+				},
+			},
+			default: 0,
+			description: 'The ID of the call to retrieve or delete',
+		},
+
+		// Call Make Fields
+		{
+			displayName: 'Assistant Name or ID',
+			name: 'assistant',
 				type: 'options',
 				required: true,
 				displayOptions: {
@@ -232,15 +272,150 @@ export class Famulor implements INodeType {
 								default: '',
 								description: 'Variable value',
 							},
-						],
-					},
-				],
-			},
+					],
+				},
+			],
+		},
 
-			// Campaign Update Status Fields
-			{
-				displayName: 'Campaign ID',
-				name: 'campaignId',
+		// Assistant Get Phone Numbers Fields
+		{
+			displayName: 'Type Filter',
+			name: 'phoneNumberType',
+			type: 'options',
+			displayOptions: {
+				show: {
+					resource: ['assistant'],
+					operation: ['getPhoneNumbers'],
+				},
+			},
+			options: [
+				{
+					name: 'All',
+					value: '',
+				},
+				{
+					name: 'Inbound',
+					value: 'inbound',
+				},
+				{
+					name: 'Outbound',
+					value: 'outbound',
+				},
+			],
+			default: '',
+			description: 'Filter phone numbers by assistant type',
+		},
+
+		// Call List Fields (Filters)
+		{
+			displayName: 'Filters',
+			name: 'filters',
+			type: 'collection',
+			placeholder: 'Add Filter',
+			default: {},
+			displayOptions: {
+				show: {
+					resource: ['call'],
+					operation: ['list'],
+				},
+			},
+			options: [
+				{
+					displayName: 'Status',
+					name: 'status',
+					type: 'options',
+					options: [
+						{ name: 'Initiated', value: 'initiated' },
+						{ name: 'Ringing', value: 'ringing' },
+						{ name: 'Busy', value: 'busy' },
+						{ name: 'In Progress', value: 'in-progress' },
+						{ name: 'Ended', value: 'ended' },
+						{ name: 'Completed', value: 'completed' },
+						{ name: 'Ended by Customer', value: 'ended_by_customer' },
+						{ name: 'Ended by Assistant', value: 'ended_by_assistant' },
+						{ name: 'No Answer', value: 'no-answer' },
+						{ name: 'Failed', value: 'failed' },
+					],
+					default: '',
+					description: 'Filter calls by status',
+				},
+				{
+					displayName: 'Type',
+					name: 'type',
+					type: 'options',
+					options: [
+						{ name: 'Inbound', value: 'inbound' },
+						{ name: 'Outbound', value: 'outbound' },
+						{ name: 'Web', value: 'web' },
+					],
+					default: '',
+					description: 'Filter calls by type',
+				},
+				{
+					displayName: 'Phone Number',
+					name: 'phone_number',
+					type: 'string',
+					default: '',
+					description: 'Filter calls by client phone number',
+				},
+				{
+					displayName: 'Assistant ID',
+					name: 'assistant_id',
+					type: 'number',
+					default: 0,
+					description: 'Filter calls by assistant ID',
+				},
+				{
+					displayName: 'Campaign ID',
+					name: 'campaign_id',
+					type: 'number',
+					default: 0,
+					description: 'Filter calls by campaign ID',
+				},
+				{
+					displayName: 'Date From',
+					name: 'date_from',
+					type: 'string',
+					default: '',
+					placeholder: 'YYYY-MM-DD',
+					description: 'Filter calls from this date',
+				},
+				{
+					displayName: 'Date To',
+					name: 'date_to',
+					type: 'string',
+					default: '',
+					placeholder: 'YYYY-MM-DD',
+					description: 'Filter calls until this date',
+				},
+				{
+					displayName: 'Per Page',
+					name: 'per_page',
+					type: 'number',
+					default: 15,
+					description: 'Number of calls per page (1-100)',
+					typeOptions: {
+						minValue: 1,
+						maxValue: 100,
+					},
+				},
+				{
+					displayName: 'Page',
+					name: 'page',
+					type: 'number',
+					default: 1,
+					description: 'Page number',
+					typeOptions: {
+						minValue: 1,
+					},
+				},
+			],
+		},
+
+		// Campaign Update Status Fields
+		{
+			displayName: 'Campaign ID',
+			name: 'campaignId',
 				type: 'number',
 				required: true,
 				displayOptions: {
@@ -326,7 +501,37 @@ export class Famulor implements INodeType {
 
 			try {
 				if (resource === 'call') {
-					if (operation === 'make') {
+					if (operation === 'delete') {
+						const callId = this.getNodeParameter('callId', i) as number;
+
+						const options = {
+							method: 'DELETE' as 'DELETE',
+							url: `https://app.famulor.de/api/user/calls/${callId}`,
+							json: true,
+						};
+
+						const response = await makeRequestWithRetry(this, options);
+						returnData.push({ 
+							json: response,
+							pairedItem: { item: i }
+						});
+
+					} else if (operation === 'get') {
+						const callId = this.getNodeParameter('callId', i) as number;
+
+						const options = {
+							method: 'GET' as 'GET',
+							url: `https://app.famulor.de/api/user/calls/${callId}`,
+							json: true,
+						};
+
+						const response = await makeRequestWithRetry(this, options);
+						returnData.push({ 
+							json: response,
+							pairedItem: { item: i }
+						});
+
+					} else if (operation === 'make') {
 						const assistant = this.getNodeParameter('assistant', i) as string;
 						const phoneNumber = this.getNodeParameter('phoneNumber', i) as string;
 						const variablesCollection = this.getNodeParameter('variables', i) as { variables: Array<{ name: string; value: string }> };
@@ -341,31 +546,76 @@ export class Famulor implements INodeType {
 						});
 					}
 
+				const options = {
+					method: 'POST' as 'POST',
+					url: 'https://app.famulor.de/api/user/make_call',
+					body: {
+						assistant_id: assistant,
+						phone_number: phoneNumber,
+						variables: variables,
+					},
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+				} else if (operation === 'list') {
+					const filters = this.getNodeParameter('filters', i, {}) as {
+						status?: string;
+						type?: string;
+						phone_number?: string;
+						assistant_id?: number;
+						campaign_id?: number;
+						date_from?: string;
+						date_to?: string;
+						per_page?: number;
+						page?: number;
+					};
+
+				// Build query parameters
+				const queryParams: string[] = [];
+				Object.entries(filters).forEach(([key, value]) => {
+					if (value !== undefined && value !== '' && value !== 0) {
+						queryParams.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+					}
+				});
+
+				const queryString = queryParams.length > 0 
+					? '?' + queryParams.join('&')
+					: '';
+
 					const options = {
-						method: 'POST' as 'POST',
-						url: 'https://app.famulor.de/api/user/make_call',
-						body: {
-							assistant_id: assistant,
-							phone_number: phoneNumber,
-							variables: variables,
-						},
+						method: 'GET' as 'GET',
+						url: `https://app.famulor.de/api/user/calls${queryString}`,
 						json: true,
 					};
 
 					const response = await makeRequestWithRetry(this, options);
-					returnData.push({ 
-						json: response,
-						pairedItem: { item: i }
+
+					if (!response.data || !Array.isArray(response.data)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected data array', { itemIndex: i });
+					}
+
+					// Return each call as a separate item
+					response.data.forEach((call: any) => {
+						returnData.push({ 
+							json: call,
+							pairedItem: { item: i }
+						});
 					});
 
-					} else {
-						throw new NodeOperationError(
-							this.getNode(),
-							`The operation "${operation}" is not known!`,
-							{ itemIndex: i },
-						);
-					}
-			} else if (resource === 'assistant') {
+				} else {
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
+				}
+		} else if (resource === 'assistant') {
 				if (operation === 'getAssistants') {
 					const options = {
 						method: 'GET' as 'GET',
@@ -383,6 +633,31 @@ export class Famulor implements INodeType {
 					response.forEach((assistant: any) => {
 						returnData.push({ 
 							json: assistant,
+							pairedItem: { item: i }
+					});
+				});
+
+				} else if (operation === 'getPhoneNumbers') {
+					const phoneNumberType = this.getNodeParameter('phoneNumberType', i, '') as string;
+
+					const queryString = phoneNumberType ? `?type=${encodeURIComponent(phoneNumberType)}` : '';
+
+					const options = {
+						method: 'GET' as 'GET',
+						url: `https://app.famulor.de/api/user/assistants/phone-numbers${queryString}`,
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+
+					if (!Array.isArray(response)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+					}
+
+					// Return each phone number as a separate item
+					response.forEach((phoneNumber: any) => {
+						returnData.push({ 
+							json: phoneNumber,
 							pairedItem: { item: i }
 						});
 					});
