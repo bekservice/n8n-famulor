@@ -91,6 +91,10 @@ export class Famulor implements INodeType {
 				name: 'SMS',
 				value: 'sms',
 			},
+			{
+				name: 'Tool',
+				value: 'tool',
+			},
 		],
 		default: 'call',
 			},
@@ -354,10 +358,54 @@ export class Famulor implements INodeType {
 					action: 'Send an SMS',
 				},
 			],
-			default: 'send',
-		},
+		default: 'send',
+	},
 
-		// Call Get/Delete Fields
+	// Tool Operations
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+			},
+		},
+		options: [
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Get a specific mid call tool by ID',
+				action: 'Get a tool',
+			},
+			{
+				name: 'List',
+				value: 'list',
+				description: 'List all mid call tools',
+				action: 'List all tools',
+			},
+		],
+		default: 'list',
+	},
+
+	// Tool Get Fields
+	{
+		displayName: 'Tool ID',
+		name: 'toolId',
+		type: 'number',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['tool'],
+				operation: ['get'],
+			},
+		},
+		default: 0,
+		description: 'The ID of the tool to retrieve',
+	},
+
+	// Call Get/Delete Fields
 		{
 			displayName: 'Call ID',
 			name: 'callId',
@@ -1194,6 +1242,50 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 					returnData.push({ 
 						json: response,
 						pairedItem: { item: i }
+					});
+
+				} else {
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
+				}
+			} else if (resource === 'tool') {
+				if (operation === 'get') {
+					const toolId = this.getNodeParameter('toolId', i) as number;
+
+					const options = {
+						method: 'GET' as 'GET',
+						url: `https://app.famulor.de/api/user/tools/${toolId}`,
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+					returnData.push({ 
+						json: response,
+						pairedItem: { item: i }
+					});
+
+				} else if (operation === 'list') {
+					const options = {
+						method: 'GET' as 'GET',
+						url: 'https://app.famulor.de/api/user/tools',
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+
+					if (!Array.isArray(response)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+					}
+
+					// Return each tool as a separate item
+					response.forEach((tool: any) => {
+						returnData.push({ 
+							json: tool,
+							pairedItem: { item: i }
+						});
 					});
 
 				} else {
