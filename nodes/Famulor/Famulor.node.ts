@@ -160,6 +160,12 @@ export class Famulor implements INodeType {
 				action: 'Get languages',
 			},
 			{
+				name: 'Get Models',
+				value: 'getModels',
+				description: 'Get all available LLM models for assistant configuration',
+				action: 'Get models',
+			},
+			{
 				name: 'Get Phone Numbers',
 				value: 'getPhoneNumbers',
 				description: 'Get available phone numbers for assistant assignment',
@@ -933,6 +939,27 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 				response.forEach((language: any) => {
 					returnData.push({ 
 						json: language,
+						pairedItem: { item: i }
+				});
+			});
+
+			} else if (operation === 'getModels') {
+				const options = {
+					method: 'GET' as 'GET',
+					url: 'https://app.famulor.de/api/user/assistants/models',
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+
+				if (!Array.isArray(response)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+				}
+
+				// Return each model as a separate item
+				response.forEach((model: any) => {
+					returnData.push({ 
+						json: model,
 						pairedItem: { item: i }
 					});
 				});
