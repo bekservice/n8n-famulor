@@ -84,6 +84,10 @@ export class Famulor implements INodeType {
 					value: 'campaign',
 				},
 				{
+					name: 'Lead',
+					value: 'lead',
+				},
+				{
 					name: 'SMS',
 					value: 'sms',
 				},
@@ -183,11 +187,33 @@ export class Famulor implements INodeType {
 					description: 'Start or stop a campaign',
 					action: 'Update campaign status',
 				},
-			],
-			default: 'list',
-		},
+		],
+		default: 'list',
+	},
 
-		// SMS Operations
+	// Lead Operations
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['lead'],
+			},
+		},
+		options: [
+			{
+				name: 'List',
+				value: 'list',
+				description: 'List all leads',
+				action: 'List all leads',
+			},
+		],
+		default: 'list',
+	},
+
+	// SMS Operations
 		{
 			displayName: 'Operation',
 			name: 'operation',
@@ -789,6 +815,35 @@ export class Famulor implements INodeType {
 					returnData.push({ 
 						json: response,
 						pairedItem: { item: i }
+					});
+
+				} else {
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
+				}
+			} else if (resource === 'lead') {
+				if (operation === 'list') {
+					const options = {
+						method: 'GET' as 'GET',
+						url: 'https://app.famulor.de/api/user/leads',
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+
+					if (!response.leads || !Array.isArray(response.leads)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected leads array', { itemIndex: i });
+					}
+
+					// Return each lead as a separate item
+					response.leads.forEach((lead: any) => {
+						returnData.push({ 
+							json: lead,
+							pairedItem: { item: i }
+						});
 					});
 
 				} else {
