@@ -863,25 +863,31 @@ export class Famulor implements INodeType {
 				});
 
 			} else if (operation === 'list') {
-					const options = {
-						method: 'GET' as 'GET',
-						url: 'https://app.famulor.de/api/user/leads',
-						json: true,
-					};
+				const options = {
+					method: 'GET' as 'GET',
+					url: 'https://app.famulor.de/api/user/leads',
+					json: true,
+				};
 
-					const response = await makeRequestWithRetry(this, options);
+				const response = await makeRequestWithRetry(this, options);
 
-					if (!response.leads || !Array.isArray(response.leads)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected leads array', { itemIndex: i });
-					}
+				// Handle both direct array response and object with leads property
+				let leads = response;
+				if (response.leads && Array.isArray(response.leads)) {
+					leads = response.leads;
+				}
 
-					// Return each lead as a separate item
-					response.leads.forEach((lead: any) => {
-						returnData.push({ 
-							json: lead,
-							pairedItem: { item: i }
-						});
+				if (!Array.isArray(leads)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+				}
+
+				// Return each lead as a separate item
+				leads.forEach((lead: any) => {
+					returnData.push({ 
+						json: lead,
+						pairedItem: { item: i }
 					});
+				});
 
 				} else {
 					throw new NodeOperationError(
