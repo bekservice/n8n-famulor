@@ -613,14 +613,6 @@ export class Famulor implements INodeType {
 		},
 		options: [
 			{
-				displayName: 'Name',
-				name: 'name',
-				type: 'string',
-				default: '',
-				placeholder: 'get_weather',
-				description: 'Tool name (lowercase letters and underscores only)',
-			},
-			{
 				displayName: 'Description',
 				name: 'description',
 				type: 'string',
@@ -637,31 +629,6 @@ export class Famulor implements INodeType {
 				default: '',
 				placeholder: 'https://api.example.com/endpoint',
 				description: 'API endpoint URL',
-			},
-			{
-				displayName: 'Method',
-				name: 'method',
-				type: 'options',
-				options: [
-					{ name: 'DELETE', value: 'DELETE' },
-					{ name: 'GET', value: 'GET' },
-					{ name: 'PATCH', value: 'PATCH' },
-					{ name: 'POST', value: 'POST' },
-					{ name: 'PUT', value: 'PUT' },
-				],
-				default: 'GET',
-				description: 'HTTP method',
-			},
-			{
-				displayName: 'Timeout',
-				name: 'timeout',
-				type: 'number',
-				default: 10,
-				description: 'Request timeout in seconds (1-30)',
-				typeOptions: {
-					minValue: 1,
-					maxValue: 30,
-				},
 			},
 			{
 				displayName: 'Headers',
@@ -694,6 +661,28 @@ export class Famulor implements INodeType {
 						],
 					},
 				],
+			},
+			{
+				displayName: 'Method',
+				name: 'method',
+				type: 'options',
+				options: [
+					{ name: 'DELETE', value: 'DELETE' },
+					{ name: 'GET', value: 'GET' },
+					{ name: 'PATCH', value: 'PATCH' },
+					{ name: 'POST', value: 'POST' },
+					{ name: 'PUT', value: 'PUT' },
+				],
+				default: 'GET',
+				description: 'HTTP method',
+			},
+			{
+				displayName: 'Name',
+				name: 'name',
+				type: 'string',
+				default: '',
+				placeholder: 'get_weather',
+				description: 'Tool name (lowercase letters and underscores only)',
 			},
 			{
 				displayName: 'Schema',
@@ -738,6 +727,17 @@ export class Famulor implements INodeType {
 						],
 					},
 				],
+			},
+			{
+				displayName: 'Timeout',
+				name: 'timeout',
+				type: 'number',
+				default: 10,
+				description: 'Request timeout in seconds (1-30)',
+				typeOptions: {
+					minValue: 1,
+					maxValue: 30,
+				},
 			},
 		],
 	},
