@@ -70,17 +70,21 @@ export class Famulor implements INodeType {
 				name: 'resource',
 				type: 'options',
 				noDataExpression: true,
-				options: [
-					{
-						name: 'Call',
-						value: 'call',
-					},
-					{
-						name: 'Assistant',
-						value: 'assistant',
-					},
-				],
-				default: 'call',
+			options: [
+				{
+					name: 'Call',
+					value: 'call',
+				},
+				{
+					name: 'Assistant',
+					value: 'assistant',
+				},
+				{
+					name: 'Campaign',
+					value: 'campaign',
+				},
+			],
+			default: 'call',
 			},
 
 			// Call Operations
@@ -105,27 +109,55 @@ export class Famulor implements INodeType {
 				default: 'make',
 			},
 
-			// Assistant Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['assistant'],
-					},
+		// Assistant Operations
+		{
+			displayName: 'Operation',
+			name: 'operation',
+			type: 'options',
+			noDataExpression: true,
+			displayOptions: {
+				show: {
+					resource: ['assistant'],
 				},
-				options: [
-					{
-						name: 'Get Assistants',
-						value: 'getAssistants',
-						description: 'Get all assistants from your account',
-						action: 'Get assistants',
-					},
-				],
-				default: 'getAssistants',
 			},
+			options: [
+				{
+					name: 'Get Assistants',
+					value: 'getAssistants',
+					description: 'Get all assistants from your account',
+					action: 'Get assistants',
+				},
+			],
+			default: 'getAssistants',
+		},
+
+		// Campaign Operations
+		{
+			displayName: 'Operation',
+			name: 'operation',
+			type: 'options',
+			noDataExpression: true,
+			displayOptions: {
+				show: {
+					resource: ['campaign'],
+				},
+			},
+			options: [
+				{
+					name: 'List',
+					value: 'list',
+					description: 'List all campaigns',
+					action: 'List all campaigns',
+				},
+				{
+					name: 'Update Status',
+					value: 'updateStatus',
+					description: 'Start or stop a campaign',
+					action: 'Update campaign status',
+				},
+			],
+			default: 'list',
+		},
 
 			// Call Make Fields
 			{
@@ -203,6 +235,48 @@ export class Famulor implements INodeType {
 						],
 					},
 				],
+			},
+
+			// Campaign Update Status Fields
+			{
+				displayName: 'Campaign ID',
+				name: 'campaignId',
+				type: 'number',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['campaign'],
+						operation: ['updateStatus'],
+					},
+				},
+				default: 0,
+				description: 'The ID of the campaign to update',
+			},
+			{
+				displayName: 'Action',
+				name: 'action',
+				type: 'options',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['campaign'],
+						operation: ['updateStatus'],
+					},
+				},
+				options: [
+					{
+						name: 'Start',
+						value: 'start',
+						description: 'Start the campaign',
+					},
+					{
+						name: 'Stop',
+						value: 'stop',
+						description: 'Stop the campaign',
+					},
+				],
+				default: 'start',
+				description: 'The action to perform on the campaign',
 			},
 		],
 	};
@@ -314,18 +388,67 @@ export class Famulor implements INodeType {
 						});
 					});
 
-					} else {
-						throw new NodeOperationError(
-							this.getNode(),
-							`The operation "${operation}" is not known!`,
-							{ itemIndex: i },
-						);
-					}
 				} else {
-					throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not known!`, {
-						itemIndex: i,
-					});
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
 				}
+			} else if (resource === 'campaign') {
+				if (operation === 'list') {
+					const options = {
+						method: 'GET' as 'GET',
+						url: 'https://app.famulor.de/api/user/campaigns',
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+
+					if (!response.campaigns || !Array.isArray(response.campaigns)) {
+						throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
+					}
+
+					// Return each campaign as a separate item
+					response.campaigns.forEach((campaign: any) => {
+						returnData.push({ 
+							json: campaign,
+							pairedItem: { item: i }
+						});
+					});
+
+				} else if (operation === 'updateStatus') {
+					const campaignId = this.getNodeParameter('campaignId', i) as number;
+					const action = this.getNodeParameter('action', i) as string;
+
+					const options = {
+						method: 'POST' as 'POST',
+						url: 'https://app.famulor.de/api/user/campaigns/update-status',
+						body: {
+							campaign_id: campaignId,
+							action: action,
+						},
+						json: true,
+					};
+
+					const response = await makeRequestWithRetry(this, options);
+					returnData.push({ 
+						json: response,
+						pairedItem: { item: i }
+					});
+
+				} else {
+					throw new NodeOperationError(
+						this.getNode(),
+						`The operation "${operation}" is not known!`,
+						{ itemIndex: i },
+					);
+				}
+			} else {
+				throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not known!`, {
+					itemIndex: i,
+				});
+			}
 
 		} catch (error) {
 			if (this.continueOnFail()) {
