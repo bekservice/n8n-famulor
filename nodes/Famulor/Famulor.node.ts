@@ -215,11 +215,17 @@ export class Famulor implements INodeType {
 				description: 'List all leads',
 				action: 'List all leads',
 			},
+			{
+				name: 'Update',
+				value: 'update',
+				description: 'Update an existing lead',
+				action: 'Update a lead',
+			},
 		],
 		default: 'list',
 	},
 
-	// Lead Delete Fields
+	// Lead Delete/Update Fields
 	{
 		displayName: 'Lead ID',
 		name: 'leadId',
@@ -228,11 +234,87 @@ export class Famulor implements INodeType {
 		displayOptions: {
 			show: {
 				resource: ['lead'],
-				operation: ['delete'],
+				operation: ['delete', 'update'],
 			},
 		},
 		default: 0,
-		description: 'The ID of the lead to delete',
+		description: 'The ID of the lead to delete or update',
+	},
+
+	// Lead Update Fields
+	{
+		displayName: 'Update Fields',
+		name: 'updateFields',
+		type: 'collection',
+		placeholder: 'Add Field',
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['lead'],
+				operation: ['update'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Campaign ID',
+				name: 'campaign_id',
+				type: 'number',
+				default: 0,
+				description: 'The ID of the campaign to assign the lead to',
+			},
+			{
+				displayName: 'Phone Number',
+				name: 'phone_number',
+				type: 'string',
+				default: '',
+				placeholder: '+1234567890',
+				description: 'The phone number of the lead (will be formatted to E164)',
+			},
+			{
+				displayName: 'Status',
+				name: 'status',
+				type: 'options',
+				options: [
+					{ name: 'Created', value: 'created' },
+					{ name: 'Completed', value: 'completed' },
+					{ name: 'Reached Max Retries', value: 'reached-max-retries' },
+				],
+				default: 'created',
+				description: 'The status of the lead',
+			},
+			{
+				displayName: 'Variables',
+				name: 'variables',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				description: 'Variables to merge with existing lead variables',
+				options: [
+					{
+						displayName: 'Variables',
+						name: 'variables',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								description: 'Variable name',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description: 'Variable value',
+							},
+						],
+					},
+				],
+			},
+		],
 	},
 
 	// SMS Operations
@@ -923,14 +1005,61 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 					});
 				});
 
-				} else {
-					throw new NodeOperationError(
-						this.getNode(),
-						`The operation "${operation}" is not known!`,
-						{ itemIndex: i },
-					);
+			} else if (operation === 'update') {
+				const leadId = this.getNodeParameter('leadId', i) as number;
+				const updateFields = this.getNodeParameter('updateFields', i, {}) as {
+					campaign_id?: number;
+					phone_number?: string;
+					status?: string;
+					variables?: { variables: Array<{ name: string; value: string }> };
+				};
+
+				// Build the update body
+				const body: any = {};
+
+				if (updateFields.campaign_id !== undefined && updateFields.campaign_id !== 0) {
+					body.campaign_id = updateFields.campaign_id;
 				}
-			} else if (resource === 'sms') {
+
+				if (updateFields.phone_number) {
+					body.phone_number = updateFields.phone_number;
+				}
+
+				if (updateFields.status) {
+					body.status = updateFields.status;
+				}
+
+				if (updateFields.variables && updateFields.variables.variables) {
+					const variables: { [key: string]: string } = {};
+					updateFields.variables.variables.forEach(variable => {
+						if (variable.name && variable.value) {
+							variables[variable.name] = variable.value;
+						}
+					});
+					body.variables = variables;
+				}
+
+				const options = {
+					method: 'PUT' as 'PUT',
+					url: `https://app.famulor.de/api/user/leads/${leadId}`,
+					body: body,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
+			}
+		} else if (resource === 'sms') {
 				if (operation === 'send') {
 					const fromPhoneNumberId = this.getNodeParameter('fromPhoneNumberId', i) as number;
 					const toPhoneNumber = this.getNodeParameter('toPhoneNumber', i) as string;
