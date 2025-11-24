@@ -263,20 +263,19 @@ export class Famulor implements INodeType {
 						operation: ['updateStatus'],
 					},
 				},
-				options: [
-					{
-						name: 'Start',
-						value: 'start',
-						description: 'Start the campaign',
-					},
-					{
-						name: 'Stop',
-						value: 'stop',
-						description: 'Stop the campaign',
-					},
-				],
-				default: 'start',
-				description: 'The action to perform on the campaign',
+			options: [
+				{
+					name: 'Start',
+					value: 'start',
+					action: 'Start a campaign',
+				},
+				{
+					name: 'Stop',
+					value: 'stop',
+					action: 'Stop a campaign',
+				},
+			],
+			default: 'start',
 			},
 		],
 	};
