@@ -146,21 +146,33 @@ export class Famulor implements INodeType {
 					resource: ['assistant'],
 				},
 			},
-			options: [
-				{
-					name: 'Get Assistants',
-					value: 'getAssistants',
-					description: 'Get all assistants from your account',
-					action: 'Get assistants',
-				},
-				{
-					name: 'Get Phone Numbers',
-					value: 'getPhoneNumbers',
-					description: 'Get available phone numbers for assistant assignment',
-					action: 'Get phone numbers',
-				},
-			],
-			default: 'getAssistants',
+		options: [
+			{
+				name: 'Get Assistants',
+				value: 'getAssistants',
+				description: 'Get all assistants from your account',
+				action: 'Get assistants',
+			},
+			{
+				name: 'Get Languages',
+				value: 'getLanguages',
+				description: 'Get all available languages for assistant configuration',
+				action: 'Get languages',
+			},
+			{
+				name: 'Get Phone Numbers',
+				value: 'getPhoneNumbers',
+				description: 'Get available phone numbers for assistant assignment',
+				action: 'Get phone numbers',
+			},
+			{
+				name: 'Get Voices',
+				value: 'getVoices',
+				description: 'Get all available voices for assistant configuration',
+				action: 'Get voices',
+			},
+		],
+		default: 'getAssistants',
 		},
 
 		// Campaign Operations
@@ -433,34 +445,63 @@ export class Famulor implements INodeType {
 			],
 		},
 
-		// Assistant Get Phone Numbers Fields
-		{
-			displayName: 'Type Filter',
-			name: 'phoneNumberType',
-			type: 'options',
-			displayOptions: {
-				show: {
-					resource: ['assistant'],
-					operation: ['getPhoneNumbers'],
-				},
+	// Assistant Get Phone Numbers Fields
+	{
+		displayName: 'Type Filter',
+		name: 'phoneNumberType',
+		type: 'options',
+		displayOptions: {
+			show: {
+				resource: ['assistant'],
+				operation: ['getPhoneNumbers'],
 			},
-			options: [
-				{
-					name: 'All',
-					value: '',
-				},
-				{
-					name: 'Inbound',
-					value: 'inbound',
-				},
-				{
-					name: 'Outbound',
-					value: 'outbound',
-				},
-			],
-			default: '',
-			description: 'Filter phone numbers by assistant type',
 		},
+		options: [
+			{
+				name: 'All',
+				value: '',
+			},
+			{
+				name: 'Inbound',
+				value: 'inbound',
+			},
+			{
+				name: 'Outbound',
+				value: 'outbound',
+			},
+		],
+		default: '',
+		description: 'Filter phone numbers by assistant type',
+	},
+
+	// Assistant Get Voices Fields
+	{
+		displayName: 'Mode Filter',
+		name: 'voiceMode',
+		type: 'options',
+		displayOptions: {
+			show: {
+				resource: ['assistant'],
+				operation: ['getVoices'],
+			},
+		},
+		options: [
+			{
+				name: 'All',
+				value: '',
+			},
+			{
+				name: 'Multimodal',
+				value: 'multimodal',
+			},
+			{
+				name: 'Pipeline',
+				value: 'pipeline',
+			},
+		],
+		default: '',
+		description: 'Filter voices by assistant mode',
+	},
 
 		// Call List Fields (Filters)
 		{
@@ -872,10 +913,31 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 						returnData.push({ 
 							json: assistant,
 							pairedItem: { item: i }
+				});
+			});
+
+			} else if (operation === 'getLanguages') {
+				const options = {
+					method: 'GET' as 'GET',
+					url: 'https://app.famulor.de/api/user/assistants/languages',
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+
+				if (!Array.isArray(response)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+				}
+
+				// Return each language as a separate item
+				response.forEach((language: any) => {
+					returnData.push({ 
+						json: language,
+						pairedItem: { item: i }
 					});
 				});
 
-				} else if (operation === 'getPhoneNumbers') {
+			} else if (operation === 'getPhoneNumbers') {
 					const phoneNumberType = this.getNodeParameter('phoneNumberType', i, '') as string;
 
 					const queryString = phoneNumberType ? `?type=${encodeURIComponent(phoneNumberType)}` : '';
@@ -897,17 +959,42 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 						returnData.push({ 
 							json: phoneNumber,
 							pairedItem: { item: i }
-						});
 					});
+				});
 
-				} else {
-					throw new NodeOperationError(
-						this.getNode(),
-						`The operation "${operation}" is not known!`,
-						{ itemIndex: i },
-					);
+			} else if (operation === 'getVoices') {
+				const voiceMode = this.getNodeParameter('voiceMode', i, '') as string;
+
+				const queryString = voiceMode ? `?mode=${encodeURIComponent(voiceMode)}` : '';
+
+				const options = {
+					method: 'GET' as 'GET',
+					url: `https://app.famulor.de/api/user/assistants/voices${queryString}`,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+
+				if (!Array.isArray(response)) {
+					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
 				}
-			} else if (resource === 'campaign') {
+
+				// Return each voice as a separate item
+				response.forEach((voice: any) => {
+					returnData.push({ 
+						json: voice,
+						pairedItem: { item: i }
+					});
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
+			}
+		} else if (resource === 'campaign') {
 				if (operation === 'list') {
 					const options = {
 						method: 'GET' as 'GET',
