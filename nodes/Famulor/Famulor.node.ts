@@ -204,6 +204,12 @@ export class Famulor implements INodeType {
 		},
 		options: [
 			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a lead',
+				action: 'Delete a lead',
+			},
+			{
 				name: 'List',
 				value: 'list',
 				description: 'List all leads',
@@ -211,6 +217,22 @@ export class Famulor implements INodeType {
 			},
 		],
 		default: 'list',
+	},
+
+	// Lead Delete Fields
+	{
+		displayName: 'Lead ID',
+		name: 'leadId',
+		type: 'number',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['lead'],
+				operation: ['delete'],
+			},
+		},
+		default: 0,
+		description: 'The ID of the lead to delete',
 	},
 
 	// SMS Operations
@@ -824,8 +846,23 @@ export class Famulor implements INodeType {
 						{ itemIndex: i },
 					);
 				}
-			} else if (resource === 'lead') {
-				if (operation === 'list') {
+		} else if (resource === 'lead') {
+			if (operation === 'delete') {
+				const leadId = this.getNodeParameter('leadId', i) as number;
+
+				const options = {
+					method: 'DELETE' as 'DELETE',
+					url: `https://app.famulor.de/api/user/leads/${leadId}`,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'list') {
 					const options = {
 						method: 'GET' as 'GET',
 						url: 'https://app.famulor.de/api/user/leads',
