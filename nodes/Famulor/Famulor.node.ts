@@ -72,6 +72,10 @@ export class Famulor implements INodeType {
 				noDataExpression: true,
 		options: [
 			{
+				name: 'AI',
+				value: 'ai',
+			},
+			{
 				name: 'Assistant',
 				value: 'assistant',
 			},
@@ -84,6 +88,10 @@ export class Famulor implements INodeType {
 				value: 'campaign',
 			},
 			{
+				name: 'Conversation',
+				value: 'conversation',
+			},
+			{
 				name: 'Lead',
 				value: 'lead',
 			},
@@ -94,6 +102,10 @@ export class Famulor implements INodeType {
 			{
 				name: 'Tool',
 				value: 'tool',
+			},
+			{
+				name: 'User',
+				value: 'user',
 			},
 		],
 		default: 'call',
@@ -405,6 +417,84 @@ export class Famulor implements INodeType {
 			},
 		],
 		default: 'list',
+	},
+
+	// User Operations
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['user'],
+			},
+		},
+		options: [
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Get the authenticated user\'s profile information',
+				action: 'Get current user',
+			},
+		],
+		default: 'get',
+	},
+
+	// AI Operations
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['ai'],
+			},
+		},
+		options: [
+			{
+				name: 'Generate Reply',
+				value: 'generateReply',
+				description: 'Generate an AI response using an assistant, identified by an external customer identifier',
+				action: 'Generate AI reply',
+			},
+		],
+		default: 'generateReply',
+	},
+
+	// Conversation Operations
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+			},
+		},
+		options: [
+			{
+				name: 'Create',
+				value: 'create',
+				description: 'Create a new conversation session with an AI assistant',
+				action: 'Create a conversation',
+			},
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Retrieve the message history of a conversation',
+				action: 'Get a conversation',
+			},
+			{
+				name: 'Send Message',
+				value: 'sendMessage',
+				description: 'Send a message in an existing conversation and receive the assistant\'s response',
+				action: 'Send a message',
+			},
+		],
+		default: 'create',
 	},
 
 	// Tool Get/Delete/Update Fields
@@ -1091,6 +1181,223 @@ export class Famulor implements INodeType {
 			default: '',
 			description: 'The SMS message content (max 300 characters)',
 		},
+
+	// AI Generate Reply Fields
+	{
+		displayName: 'Assistant ID',
+		name: 'aiAssistantId',
+		type: 'number',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['ai'],
+				operation: ['generateReply'],
+			},
+		},
+		default: 0,
+		description: 'The ID of the assistant to use for generating the response',
+	},
+	{
+		displayName: 'Customer Identifier',
+		name: 'customerIdentifier',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['ai'],
+				operation: ['generateReply'],
+			},
+		},
+		default: '',
+		placeholder: '+49155551234',
+		description: 'A unique identifier for the customer (e.g., phone number, email, CRM contact ID). Maximum length: 255 characters.',
+	},
+	{
+		displayName: 'Message',
+		name: 'aiMessage',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['ai'],
+				operation: ['generateReply'],
+			},
+		},
+		typeOptions: {
+			rows: 4,
+		},
+		default: '',
+		description: 'The customer\'s message to respond to',
+	},
+	{
+		displayName: 'Variables',
+		name: 'aiVariables',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		displayOptions: {
+			show: {
+				resource: ['ai'],
+				operation: ['generateReply'],
+			},
+		},
+		default: {},
+		description: 'Optional context variables to pass to the assistant',
+		options: [
+			{
+				displayName: 'Variables',
+				name: 'variables',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'Variable name',
+					},
+					{
+						displayName: 'Value',
+						name: 'value',
+						type: 'string',
+						default: '',
+						description: 'Variable value',
+					},
+				],
+			},
+		],
+	},
+
+	// Conversation Create Fields
+	{
+		displayName: 'Assistant ID (UUID)',
+		name: 'conversationAssistantId',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['create'],
+			},
+		},
+		default: '',
+		placeholder: '550e8400-e29b-41d4-a716-446655440000',
+		description: 'The UUID of the assistant to start the conversation with',
+	},
+	{
+		displayName: 'Type',
+		name: 'conversationType',
+		type: 'options',
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['create'],
+			},
+		},
+		options: [
+			{
+				name: 'Widget',
+				value: 'widget',
+				description: 'Web widget conversation (charged)',
+			},
+			{
+				name: 'Test',
+				value: 'test',
+				description: 'Test conversation (free, for development)',
+			},
+		],
+		default: 'widget',
+		description: 'The type of conversation',
+	},
+	{
+		displayName: 'Variables',
+		name: 'conversationCreateVariables',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['create'],
+			},
+		},
+		default: {},
+		description: 'Custom variables to pass to the assistant',
+		options: [
+			{
+				displayName: 'Variables',
+				name: 'variables',
+				values: [
+					{
+						displayName: 'Name',
+						name: 'name',
+						type: 'string',
+						default: '',
+						description: 'Variable name',
+					},
+					{
+						displayName: 'Value',
+						name: 'value',
+						type: 'string',
+						default: '',
+						description: 'Variable value',
+					},
+				],
+			},
+		],
+	},
+
+	// Conversation Get Fields
+	{
+		displayName: 'Conversation ID (UUID)',
+		name: 'conversationId',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['get'],
+			},
+		},
+		default: '',
+		placeholder: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+		description: 'The unique UUID identifier of the conversation to retrieve',
+	},
+
+	// Conversation Send Message Fields
+	{
+		displayName: 'Conversation ID (UUID)',
+		name: 'conversationMessageId',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['sendMessage'],
+			},
+		},
+		default: '',
+		placeholder: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+		description: 'The unique UUID identifier of the conversation',
+	},
+	{
+		displayName: 'Message',
+		name: 'conversationMessage',
+		type: 'string',
+		required: true,
+		displayOptions: {
+			show: {
+				resource: ['conversation'],
+				operation: ['sendMessage'],
+			},
+		},
+		typeOptions: {
+			rows: 4,
+		},
+		default: '',
+		description: 'The user\'s message to send to the assistant (max 2000 characters)',
+	},
 	],
 	};
 
@@ -1757,6 +2064,153 @@ async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 					method: 'PUT' as 'PUT',
 					url: `https://app.famulor.de/api/user/tools/${toolId}`,
 					body: body,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
+			}
+		} else if (resource === 'user') {
+			if (operation === 'get') {
+				const options = {
+					method: 'GET' as 'GET',
+					url: 'https://app.famulor.de/api/user/me',
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
+			}
+		} else if (resource === 'ai') {
+			if (operation === 'generateReply') {
+				const assistantId = this.getNodeParameter('aiAssistantId', i) as number;
+				const customerIdentifier = this.getNodeParameter('customerIdentifier', i) as string;
+				const message = this.getNodeParameter('aiMessage', i) as string;
+				const variablesCollection = this.getNodeParameter('aiVariables', i, {}) as { variables?: Array<{ name: string; value: string }> };
+
+				// Convert variables from collection format to object format expected by API
+				const variables: { [key: string]: string } = {};
+				if (variablesCollection.variables) {
+					variablesCollection.variables.forEach(variable => {
+						if (variable.name && variable.value) {
+							variables[variable.name] = variable.value;
+						}
+					});
+				}
+
+				const body: any = {
+					assistant_id: assistantId,
+					customer_identifier: customerIdentifier,
+					message: message,
+				};
+
+				if (Object.keys(variables).length > 0) {
+					body.variables = variables;
+				}
+
+				const options = {
+					method: 'POST' as 'POST',
+					url: 'https://app.famulor.de/api/ai/generate-reply',
+					body: body,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else {
+				throw new NodeOperationError(
+					this.getNode(),
+					`The operation "${operation}" is not known!`,
+					{ itemIndex: i },
+				);
+			}
+		} else if (resource === 'conversation') {
+			if (operation === 'create') {
+				const assistantId = this.getNodeParameter('conversationAssistantId', i) as string;
+				const type = this.getNodeParameter('conversationType', i, 'widget') as string;
+				const variablesCollection = this.getNodeParameter('conversationCreateVariables', i, {}) as { variables?: Array<{ name: string; value: string }> };
+
+				// Convert variables from collection format to object format expected by API
+				const variables: { [key: string]: string } = {};
+				if (variablesCollection.variables) {
+					variablesCollection.variables.forEach(variable => {
+						if (variable.name && variable.value) {
+							variables[variable.name] = variable.value;
+						}
+					});
+				}
+
+				const body: any = {
+					assistant_id: assistantId,
+					type: type,
+				};
+
+				if (Object.keys(variables).length > 0) {
+					body.variables = variables;
+				}
+
+				const options = {
+					method: 'POST' as 'POST',
+					url: 'https://app.famulor.de/api/conversations',
+					body: body,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'get') {
+				const conversationId = this.getNodeParameter('conversationId', i) as string;
+
+				const options = {
+					method: 'GET' as 'GET',
+					url: `https://app.famulor.de/api/conversations/${conversationId}`,
+					json: true,
+				};
+
+				const response = await makeRequestWithRetry(this, options);
+				returnData.push({ 
+					json: response,
+					pairedItem: { item: i }
+				});
+
+			} else if (operation === 'sendMessage') {
+				const conversationId = this.getNodeParameter('conversationMessageId', i) as string;
+				const message = this.getNodeParameter('conversationMessage', i) as string;
+
+				const options = {
+					method: 'POST' as 'POST',
+					url: `https://app.famulor.de/api/conversations/${conversationId}/messages`,
+					body: {
+						message: message,
+					},
 					json: true,
 				};
 
