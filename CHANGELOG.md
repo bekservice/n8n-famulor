@@ -21,6 +21,7 @@ Breaking rebuild for **Famulor Platform 2.0 / API v1**. No Classic 1.0 compatibi
 - Assistant Get / Get Many / Create against `/api/v1/assistants`.
 - Campaign Get Many / Create against `/api/v1/campaigns`.
 - Unit tests for HMAC verification and Make Call payload construction.
+- Official 2026 Famulor Toggle-Mark as the node, credential, and README icon (cyan `#1FD5FA` rounded toggle). The previous white serif-F is gone.
 
 ### Credentials UI
 

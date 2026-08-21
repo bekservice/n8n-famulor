@@ -8,6 +8,7 @@ import {
 export class FamulorApi implements ICredentialType {
 	name = 'famulorApi';
 	displayName = 'Famulor API';
+	icon = 'file:famulor.svg' as const;
 	documentationUrl = 'https://app.famulor.io/';
 	properties: INodeProperties[] = [
 		{

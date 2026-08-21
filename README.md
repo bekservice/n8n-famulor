@@ -1,5 +1,11 @@
 # Famulor for n8n
 
+<div align="center">
+
+<img src="nodes/Famulor/famulor.png" alt="Famulor Toggle-Mark" width="96" height="96">
+
+</div>
+
 Official n8n community node for **Famulor Platform 2.0** (`API v1`).
 
 [![npm version](https://badge.fury.io/js/n8n-nodes-famulor.svg)](https://www.npmjs.com/package/n8n-nodes-famulor)
