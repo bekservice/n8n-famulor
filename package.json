@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-famulor",
-  "version": "1.8.0",
-  "description": "n8n community node for Famulor - Automate phone calls using AI calling platform",
+  "version": "2.0.0",
+  "description": "n8n community node for Famulor Platform 2.0 - AI phone calls via API v1",
   "keywords": [
     "n8n-community-node-package",
     "famulor",
@@ -31,27 +31,30 @@
     "format": "prettier nodes credentials --write",
     "lint": "eslint nodes credentials package.json",
     "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json"
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json && npm test"
   },
   "files": [
     "dist",
     "index.js"
   ],
   "n8n": {
-		"n8nNodesApiVersion": 1,
-		"credentials": [
-			"dist/credentials/FamulorApi.credentials.js"
-		],
-		"nodes": [
-			"dist/nodes/Famulor/Famulor.node.js",
-			"dist/nodes/Famulor/FamulorTrigger.node.js"
-		]
-	},
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/FamulorApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Famulor/Famulor.node.js",
+      "dist/nodes/Famulor/FamulorTrigger.node.js"
+    ]
+  },
   "devDependencies": {
+    "@types/node": "^20.17.0",
     "@typescript-eslint/parser": "~8.32.0",
     "eslint": "^8.57.0",
     "eslint-plugin-n8n-nodes-base": "^1.16.3",
     "gulp": "^5.0.0",
+    "n8n-workflow": "*",
     "prettier": "^3.5.3",
     "typescript": "^5.8.2"
   },

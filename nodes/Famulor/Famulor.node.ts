@@ -1,46 +1,26 @@
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	ILoadOptionsFunctions,
 	INodeExecutionData,
-	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeConnectionType,
-	NodeOperationError,
-	sleep,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import { buildMakeCallBody, extractListItems, isE164, parseLead, unwrapResource } from './api';
+import {
+	famulorApiRequest,
+	loadAssistants,
+	loadPhoneNumbers,
+	toNodeError,
+} from './GenericFunctions';
 
-// Helper function for retry logic with rate limiting
-async function makeRequestWithRetry(
-	context: IExecuteFunctions,
-	options: any,
-	maxRetries = 3,
-	baseDelay = 1000
-): Promise<any> {
-	for (let attempt = 0; attempt <= maxRetries; attempt++) {
-		try {
-			return await context.helpers.httpRequestWithAuthentication.call(context, 'famulorApi', options);
-		} catch (error: any) {
-			// Check if this is a rate limit error (429)
-			if (error.statusCode === 429 || (error.message && error.message.includes('429'))) {
-				if (attempt < maxRetries) {
-					// Extract retry_after from error message if available
-					let retryAfter = baseDelay;
-					const retryMatch = error.message.match(/"retry_after":(\d+)/);
-					if (retryMatch) {
-						retryAfter = parseInt(retryMatch[1]) * 1000; // Convert to milliseconds
-					}
+type Resource = 'assistant' | 'call' | 'campaign';
+type CallOperation = 'get' | 'getAll' | 'make';
+type AssistantOperation = 'create' | 'get' | 'getAll';
+type CampaignOperation = 'create' | 'getAll';
 
-					// Wait before retrying with exponential backoff
-					const delay = Math.min(retryAfter * (attempt + 1), 10000); // Max 10 seconds
-					await sleep(delay);
-					continue;
-				}
-			}
-			// If not a rate limit error or max retries reached, throw the error
-			throw error;
-		}
-	}
+function asJson(data: unknown): IDataObject {
+	return data as IDataObject;
 }
 
 export class Famulor implements INodeType {
@@ -49,9 +29,9 @@ export class Famulor implements INodeType {
 		name: 'famulor',
 		icon: 'file:famulor.svg',
 		group: ['communication'],
-		version: 1,
+		version: 2,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Make phone calls using AI assistants from Famulor platform',
+		description: 'Automate Famulor Platform 2.0 AI phone calls via API v1',
 		defaults: {
 			name: 'Famulor',
 		},
@@ -70,2183 +50,774 @@ export class Famulor implements INodeType {
 				name: 'resource',
 				type: 'options',
 				noDataExpression: true,
-		options: [
-			{
-				name: 'AI',
-				value: 'ai',
-			},
-			{
-				name: 'Assistant',
-				value: 'assistant',
-			},
-			{
-				name: 'Call',
-				value: 'call',
-			},
-			{
-				name: 'Campaign',
-				value: 'campaign',
-			},
-			{
-				name: 'Conversation',
-				value: 'conversation',
-			},
-			{
-				name: 'Lead',
-				value: 'lead',
-			},
-			{
-				name: 'SMS',
-				value: 'sms',
-			},
-			{
-				name: 'Tool',
-				value: 'tool',
-			},
-			{
-				name: 'User',
-				value: 'user',
-			},
-		],
-		default: 'call',
+				options: [
+					{
+						name: 'Assistant',
+						value: 'assistant',
+					},
+					{
+						name: 'Call',
+						value: 'call',
+					},
+					{
+						name: 'Campaign',
+						value: 'campaign',
+					},
+				],
+				default: 'call',
 			},
 
-		// Call Operations
-		{
-			displayName: 'Operation',
-			name: 'operation',
-			type: 'options',
-			noDataExpression: true,
-			displayOptions: {
-				show: {
-					resource: ['call'],
-				},
-			},
-			options: [
-				{
-					name: 'Delete',
-					value: 'delete',
-					description: 'Delete a specific call record',
-					action: 'Delete a call',
-				},
-				{
-					name: 'Get',
-					value: 'get',
-					description: 'Get details of a specific call by ID',
-					action: 'Get a call',
-				},
-				{
-					name: 'List',
-					value: 'list',
-					description: 'List all calls with filtering options',
-					action: 'List all calls',
-				},
-				{
-					name: 'Make',
-					value: 'make',
-					description: 'Make a phone call using an AI assistant',
-					action: 'Make a phone call',
-				},
-			],
-			default: 'make',
-		},
-
-		// Assistant Operations
-		{
-			displayName: 'Operation',
-			name: 'operation',
-			type: 'options',
-			noDataExpression: true,
-			displayOptions: {
-				show: {
-					resource: ['assistant'],
-				},
-			},
-		options: [
 			{
-				name: 'Get Assistants',
-				value: 'getAssistants',
-				description: 'Get all assistants from your account',
-				action: 'Get assistants',
-			},
-			{
-				name: 'Get Languages',
-				value: 'getLanguages',
-				description: 'Get all available languages for assistant configuration',
-				action: 'Get languages',
-			},
-			{
-				name: 'Get Models',
-				value: 'getModels',
-				description: 'Get all available LLM models for assistant configuration',
-				action: 'Get models',
-			},
-			{
-				name: 'Get Phone Numbers',
-				value: 'getPhoneNumbers',
-				description: 'Get available phone numbers for assistant assignment',
-				action: 'Get phone numbers',
-			},
-			{
-				name: 'Get Voices',
-				value: 'getVoices',
-				description: 'Get all available voices for assistant configuration',
-				action: 'Get voices',
-			},
-		],
-		default: 'getAssistants',
-		},
-
-		// Campaign Operations
-		{
-			displayName: 'Operation',
-			name: 'operation',
-			type: 'options',
-			noDataExpression: true,
-			displayOptions: {
-				show: {
-					resource: ['campaign'],
-				},
-			},
-			options: [
-				{
-					name: 'List',
-					value: 'list',
-					description: 'List all campaigns',
-					action: 'List all campaigns',
-				},
-				{
-					name: 'Update Status',
-					value: 'updateStatus',
-					description: 'Start or stop a campaign',
-					action: 'Update campaign status',
-				},
-		],
-		default: 'list',
-	},
-
-	// Lead Operations
-	{
-		displayName: 'Operation',
-		name: 'operation',
-		type: 'options',
-		noDataExpression: true,
-		displayOptions: {
-			show: {
-				resource: ['lead'],
-			},
-		},
-		options: [
-			{
-				name: 'Delete',
-				value: 'delete',
-				description: 'Delete a lead',
-				action: 'Delete a lead',
-			},
-			{
-				name: 'List',
-				value: 'list',
-				description: 'List all leads',
-				action: 'List all leads',
-			},
-			{
-				name: 'Update',
-				value: 'update',
-				description: 'Update an existing lead',
-				action: 'Update a lead',
-			},
-		],
-		default: 'list',
-	},
-
-	// Lead Delete/Update Fields
-	{
-		displayName: 'Lead ID',
-		name: 'leadId',
-		type: 'number',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['lead'],
-				operation: ['delete', 'update'],
-			},
-		},
-		default: 0,
-		description: 'The ID of the lead to delete or update',
-	},
-
-	// Lead Update Fields
-	{
-		displayName: 'Update Fields',
-		name: 'updateFields',
-		type: 'collection',
-		placeholder: 'Add Field',
-		default: {},
-		displayOptions: {
-			show: {
-				resource: ['lead'],
-				operation: ['update'],
-			},
-		},
-		options: [
-			{
-				displayName: 'Campaign ID',
-				name: 'campaign_id',
-				type: 'number',
-				default: 0,
-				description: 'The ID of the campaign to assign the lead to',
-			},
-			{
-				displayName: 'Phone Number',
-				name: 'phone_number',
-				type: 'string',
-				default: '',
-				placeholder: '+1234567890',
-				description: 'The phone number of the lead (will be formatted to E164)',
-			},
-			{
-				displayName: 'Status',
-				name: 'status',
+				displayName: 'Operation',
+				name: 'operation',
 				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['call'],
+					},
+				},
 				options: [
-					{ name: 'Created', value: 'created' },
-					{ name: 'Completed', value: 'completed' },
-					{ name: 'Reached Max Retries', value: 'reached-max-retries' },
+					{
+						name: 'Get',
+						value: 'get',
+						description: 'Get a call by UUID, including transcript and analysis',
+						action: 'Get a call',
+					},
+					{
+						name: 'Get Many',
+						value: 'getAll',
+						description: 'List calls with optional filters',
+						action: 'Get many calls',
+					},
+					{
+						name: 'Make',
+						value: 'make',
+						description: 'Start an outbound call with an AI assistant',
+						action: 'Make a phone call',
+					},
 				],
-				default: 'created',
-				description: 'The status of the lead',
+				default: 'make',
 			},
+
 			{
-				displayName: 'Variables',
-				name: 'variables',
-				type: 'fixedCollection',
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'create',
+						description: 'Create an AI phone assistant',
+						action: 'Create an assistant',
+					},
+					{
+						name: 'Get',
+						value: 'get',
+						description: 'Get a single assistant by UUID',
+						action: 'Get an assistant',
+					},
+					{
+						name: 'Get Many',
+						value: 'getAll',
+						description: 'List assistants in the workspace',
+						action: 'Get many assistants',
+					},
+				],
+				default: 'getAll',
+			},
+
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['campaign'],
+					},
+				},
+				options: [
+					{
+						name: 'Create',
+						value: 'create',
+						description: 'Create an outreach campaign',
+						action: 'Create a campaign',
+					},
+					{
+						name: 'Get Many',
+						value: 'getAll',
+						description: 'List campaigns in the workspace',
+						action: 'Get many campaigns',
+					},
+				],
+				default: 'getAll',
+			},
+
+			{
+				displayName: 'Assistant Name or ID',
+				name: 'assistantId',
+				type: 'options',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['call'],
+						operation: ['make'],
+					},
+				},
 				typeOptions: {
-					multipleValues: true,
+					loadOptionsMethod: 'getAssistants',
 				},
+				default: '',
+				description:
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+			},
+			{
+				displayName: 'To Number',
+				name: 'toNumber',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['call'],
+						operation: ['make'],
+					},
+				},
+				default: '',
+				placeholder: '+4930123456',
+				description: 'Destination phone number in E.164 format, for example +4930123456',
+			},
+			{
+				displayName: 'Additional Fields',
+				name: 'additionalFields',
+				type: 'collection',
+				placeholder: 'Add Field',
 				default: {},
-				description: 'Variables to merge with existing lead variables',
+				displayOptions: {
+					show: {
+						resource: ['call'],
+						operation: ['make'],
+					},
+				},
 				options: [
 					{
-						displayName: 'Variables',
-						name: 'variables',
-						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								description: 'Variable name',
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								description: 'Variable value',
-							},
-						],
+						displayName: 'Lead',
+						name: 'lead',
+						type: 'json',
+						default: '{}',
+						description:
+							'Optional lead object available to the assistant during the call, for example {"name":"Jane Doe"}. Do not send Classic 1.0 variables, from_number, or lead_id.',
+					},
+					{
+						displayName: 'Phone Number Name or ID',
+						name: 'phoneNumberId',
+						type: 'options',
+						typeOptions: {
+							loadOptionsMethod: 'getPhoneNumbers',
+						},
+						default: '',
+						description:
+							'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 					},
 				],
 			},
-		],
-	},
 
-	// SMS Operations
-		{
-			displayName: 'Operation',
-			name: 'operation',
-			type: 'options',
-			noDataExpression: true,
-			displayOptions: {
-				show: {
-					resource: ['sms'],
+			{
+				displayName: 'Call ID',
+				name: 'callId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['call'],
+						operation: ['get'],
+					},
 				},
+				default: '',
+				placeholder: '11111111-1111-4111-8111-111111111111',
+				description: 'Call UUID returned by Make or Get Many',
 			},
-			options: [
-				{
-					name: 'Send',
-					value: 'send',
-					description: 'Send an SMS message',
-					action: 'Send an SMS',
+
+			{
+				displayName: 'Filters',
+				name: 'filters',
+				type: 'collection',
+				placeholder: 'Add Filter',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['call'],
+						operation: ['getAll'],
+					},
 				},
-			],
-		default: 'send',
-	},
-
-	// Tool Operations
-	{
-		displayName: 'Operation',
-		name: 'operation',
-		type: 'options',
-		noDataExpression: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-			},
-		},
-		options: [
-			{
-				name: 'Create',
-				value: 'create',
-				description: 'Create a new mid call tool',
-				action: 'Create a tool',
-			},
-			{
-				name: 'Delete',
-				value: 'delete',
-				description: 'Delete a mid call tool',
-				action: 'Delete a tool',
-			},
-			{
-				name: 'Get',
-				value: 'get',
-				description: 'Get a specific mid call tool by ID',
-				action: 'Get a tool',
-			},
-			{
-				name: 'List',
-				value: 'list',
-				description: 'List all mid call tools',
-				action: 'List all tools',
-			},
-			{
-				name: 'Update',
-				value: 'update',
-				description: 'Update an existing mid call tool',
-				action: 'Update a tool',
-			},
-		],
-		default: 'list',
-	},
-
-	// User Operations
-	{
-		displayName: 'Operation',
-		name: 'operation',
-		type: 'options',
-		noDataExpression: true,
-		displayOptions: {
-			show: {
-				resource: ['user'],
-			},
-		},
-		options: [
-			{
-				name: 'Get',
-				value: 'get',
-				description: 'Get the authenticated user\'s profile information',
-				action: 'Get current user',
-			},
-		],
-		default: 'get',
-	},
-
-	// AI Operations
-	{
-		displayName: 'Operation',
-		name: 'operation',
-		type: 'options',
-		noDataExpression: true,
-		displayOptions: {
-			show: {
-				resource: ['ai'],
-			},
-		},
-		options: [
-			{
-				name: 'Generate Reply',
-				value: 'generateReply',
-				description: 'Generate an AI response using an assistant, identified by an external customer identifier',
-				action: 'Generate AI reply',
-			},
-		],
-		default: 'generateReply',
-	},
-
-	// Conversation Operations
-	{
-		displayName: 'Operation',
-		name: 'operation',
-		type: 'options',
-		noDataExpression: true,
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-			},
-		},
-		options: [
-			{
-				name: 'Create',
-				value: 'create',
-				description: 'Create a new conversation session with an AI assistant',
-				action: 'Create a conversation',
-			},
-			{
-				name: 'Get',
-				value: 'get',
-				description: 'Retrieve the message history of a conversation',
-				action: 'Get a conversation',
-			},
-			{
-				name: 'Send Message',
-				value: 'sendMessage',
-				description: 'Send a message in an existing conversation and receive the assistant\'s response',
-				action: 'Send a message',
-			},
-		],
-		default: 'create',
-	},
-
-	// Tool Get/Delete/Update Fields
-	{
-		displayName: 'Tool ID',
-		name: 'toolId',
-		type: 'number',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['get', 'delete', 'update'],
-			},
-		},
-		default: 0,
-		description: 'The ID of the tool to retrieve, delete or update',
-	},
-
-	// Tool Create Fields
-	{
-		displayName: 'Name',
-		name: 'toolName',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		default: '',
-		placeholder: 'get_weather',
-		description: 'Tool name (lowercase letters and underscores only, must start with letter)',
-	},
-	{
-		displayName: 'Description',
-		name: 'toolDescription',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		typeOptions: {
-			rows: 3,
-		},
-		default: '',
-		description: 'Detailed explanation of when and how the AI should use this tool (max 255 characters)',
-	},
-	{
-		displayName: 'Endpoint',
-		name: 'endpoint',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		default: '',
-		placeholder: 'https://api.example.com/endpoint',
-		description: 'Valid URL of the API endpoint to call',
-	},
-	{
-		displayName: 'Method',
-		name: 'method',
-		type: 'options',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		options: [
-			{ name: 'DELETE', value: 'DELETE' },
-			{ name: 'GET', value: 'GET' },
-			{ name: 'PATCH', value: 'PATCH' },
-			{ name: 'POST', value: 'POST' },
-			{ name: 'PUT', value: 'PUT' },
-		],
-		default: 'GET',
-		description: 'HTTP method',
-	},
-	{
-		displayName: 'Timeout',
-		name: 'timeout',
-		type: 'number',
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		default: 10,
-		description: 'Request timeout in seconds (1-30)',
-		typeOptions: {
-			minValue: 1,
-			maxValue: 30,
-		},
-	},
-	{
-		displayName: 'Headers',
-		name: 'headers',
-		type: 'fixedCollection',
-		typeOptions: {
-			multipleValues: true,
-		},
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		default: {},
-		description: 'HTTP headers to send with the request',
-		options: [
-			{
-				displayName: 'Headers',
-				name: 'headers',
-				values: [
+				options: [
 					{
-						displayName: 'Name',
-						name: 'name',
+						displayName: 'Assistant ID',
+						name: 'assistant_id',
 						type: 'string',
 						default: '',
-						description: 'Header name',
+						description: 'Return only calls for this assistant UUID',
 					},
 					{
-						displayName: 'Value',
-						name: 'value',
+						displayName: 'Campaign ID',
+						name: 'campaign_id',
 						type: 'string',
 						default: '',
-						description: 'Header value',
-					},
-				],
-			},
-		],
-	},
-	{
-		displayName: 'Schema',
-		name: 'schema',
-		type: 'fixedCollection',
-		typeOptions: {
-			multipleValues: true,
-		},
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['create'],
-			},
-		},
-		default: {},
-		description: 'Parameters that the AI will extract from conversation',
-		options: [
-			{
-				displayName: 'Parameters',
-				name: 'parameters',
-				values: [
-					{
-						displayName: 'Name',
-						name: 'name',
-						type: 'string',
-						default: '',
-						description: 'Parameter name (2-32 chars, letters and underscores)',
+						description: 'Return only calls for this campaign UUID',
 					},
 					{
-						displayName: 'Type',
-						name: 'type',
+						displayName: 'Direction',
+						name: 'direction',
 						type: 'options',
 						options: [
-							{ name: 'Boolean', value: 'boolean' },
-							{ name: 'Number', value: 'number' },
-							{ name: 'String', value: 'string' },
+							{
+								name: 'Inbound',
+								value: 'inbound',
+							},
+							{
+								name: 'Outbound',
+								value: 'outbound',
+							},
+							{
+								name: 'Web',
+								value: 'web',
+							},
 						],
-						default: 'string',
-						description: 'Parameter type',
+						default: 'outbound',
+						description: 'Return only calls with this direction',
 					},
 					{
-						displayName: 'Description',
-						name: 'description',
+						displayName: 'From',
+						name: 'from',
 						type: 'string',
 						default: '',
-						description: 'Help AI understand how to extract this parameter (3-255 chars)',
+						placeholder: '2026-01-01T00:00:00Z',
+						description: 'Return only calls created at or after this ISO-8601 timestamp',
 					},
-				],
-			},
-		],
-	},
-
-	// Tool Update Fields
-	{
-		displayName: 'Update Fields',
-		name: 'updateToolFields',
-		type: 'collection',
-		placeholder: 'Add Field',
-		default: {},
-		displayOptions: {
-			show: {
-				resource: ['tool'],
-				operation: ['update'],
-			},
-		},
-		options: [
-			{
-				displayName: 'Description',
-				name: 'description',
-				type: 'string',
-				typeOptions: {
-					rows: 3,
-				},
-				default: '',
-				description: 'Tool description (max 255 characters)',
-			},
-			{
-				displayName: 'Endpoint',
-				name: 'endpoint',
-				type: 'string',
-				default: '',
-				placeholder: 'https://api.example.com/endpoint',
-				description: 'API endpoint URL',
-			},
-			{
-				displayName: 'Headers',
-				name: 'headers',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
-				default: {},
-				description: 'HTTP headers (replaces existing)',
-				options: [
 					{
-						displayName: 'Headers',
-						name: 'headers',
-						values: [
+						displayName: 'Limit',
+						name: 'pageLimit',
+						type: 'number',
+						typeOptions: {
+							minValue: 1,
+						},
+						default: 50,
+						description: 'Maximum number of calls to return (1-200)',
+					},
+					{
+						displayName: 'Offset',
+						name: 'offset',
+						type: 'number',
+						typeOptions: {
+							minValue: 0,
+						},
+						default: 0,
+						description: 'Number of calls to skip',
+					},
+					{
+						displayName: 'Search',
+						name: 'q',
+						type: 'string',
+						default: '',
+						description: 'Lexical search against call transcript and summary',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						options: [
 							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								description: 'Header name',
+								name: 'Busy',
+								value: 'busy',
 							},
 							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								description: 'Header value',
+								name: 'Completed',
+								value: 'completed',
+							},
+							{
+								name: 'Failed',
+								value: 'failed',
+							},
+							{
+								name: 'In Progress',
+								value: 'in_progress',
+							},
+							{
+								name: 'No Answer',
+								value: 'no_answer',
+							},
+							{
+								name: 'Queued',
+								value: 'queued',
+							},
+							{
+								name: 'Ringing',
+								value: 'ringing',
 							},
 						],
+						default: 'completed',
+						description: 'Return only calls with this status',
+					},
+					{
+						displayName: 'To',
+						name: 'to',
+						type: 'string',
+						default: '',
+						placeholder: '2026-12-31T23:59:59Z',
+						description: 'Return only calls created at or before this ISO-8601 timestamp',
 					},
 				],
 			},
-			{
-				displayName: 'Method',
-				name: 'method',
-				type: 'options',
-				options: [
-					{ name: 'DELETE', value: 'DELETE' },
-					{ name: 'GET', value: 'GET' },
-					{ name: 'PATCH', value: 'PATCH' },
-					{ name: 'POST', value: 'POST' },
-					{ name: 'PUT', value: 'PUT' },
-				],
-				default: 'GET',
-				description: 'HTTP method',
-			},
+
 			{
 				displayName: 'Name',
-				name: 'name',
+				name: 'assistantName',
 				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+						operation: ['create'],
+					},
+				},
 				default: '',
-				placeholder: 'get_weather',
-				description: 'Tool name (lowercase letters and underscores only)',
+				description: 'Display name of the assistant',
 			},
 			{
-				displayName: 'Schema',
-				name: 'schema',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
+				displayName: 'Additional Fields',
+				name: 'assistantAdditionalFields',
+				type: 'collection',
+				placeholder: 'Add Field',
 				default: {},
-				description: 'Parameters schema (replaces existing)',
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+						operation: ['create'],
+					},
+				},
 				options: [
 					{
-						displayName: 'Parameters',
-						name: 'parameters',
-						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								description: 'Parameter name',
-							},
-							{
-								displayName: 'Type',
-								name: 'type',
-								type: 'options',
-								options: [
-									{ name: 'Boolean', value: 'boolean' },
-									{ name: 'Number', value: 'number' },
-									{ name: 'String', value: 'string' },
-								],
-								default: 'string',
-								description: 'Parameter type',
-							},
-							{
-								displayName: 'Description',
-								name: 'description',
-								type: 'string',
-								default: '',
-								description: 'Parameter description',
-							},
-						],
+						displayName: 'First Message',
+						name: 'first_message',
+						type: 'string',
+						default: '',
+						description: 'Opening line the assistant speaks when the call starts',
+					},
+					{
+						displayName: 'System Prompt',
+						name: 'system_prompt',
+						type: 'string',
+						typeOptions: {
+							rows: 4,
+						},
+						default: '',
+						description: 'System prompt that defines role, tone, and behavior',
 					},
 				],
 			},
-			{
-				displayName: 'Timeout',
-				name: 'timeout',
-				type: 'number',
-				default: 10,
-				description: 'Request timeout in seconds (1-30)',
-				typeOptions: {
-					minValue: 1,
-					maxValue: 30,
-				},
-			},
-		],
-	},
 
-	// Call Get/Delete Fields
-		{
-			displayName: 'Call ID',
-			name: 'callId',
-			type: 'number',
-			required: true,
-			displayOptions: {
-				show: {
-					resource: ['call'],
-					operation: ['get', 'delete'],
-				},
-			},
-			default: 0,
-			description: 'The ID of the call to retrieve or delete',
-		},
-
-		// Call Make Fields
-		{
-			displayName: 'Assistant Name or ID',
-			name: 'assistant',
-				type: 'options',
-				required: true,
-				displayOptions: {
-					show: {
-						resource: ['call'],
-						operation: ['make'],
-					},
-				},
-				typeOptions: {
-					loadOptionsMethod: 'getOutboundAssistants',
-				},
-				default: '',
-				description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-			},
-			{
-				displayName: 'Customer Phone Number',
-				name: 'phoneNumber',
-				type: 'string',
-				required: true,
-				displayOptions: {
-					show: {
-						resource: ['call'],
-						operation: ['make'],
-					},
-				},
-				default: '',
-				description: 'Enter the phone number of the customer',
-			},
-			{
-				displayName: 'Variables',
-				name: 'variables',
-				type: 'fixedCollection',
-				typeOptions: {
-					multipleValues: true,
-				},
-				displayOptions: {
-					show: {
-						resource: ['call'],
-						operation: ['make'],
-					},
-				},
-				default: {
-					variables: [
-						{
-							name: 'Customer Name',
-							value: 'John',
-						},
-					],
-				},
-				description: 'Variables to pass to the assistant',
-				options: [
-					{
-						displayName: 'Variables',
-						name: 'variables',
-						values: [
-							{
-								displayName: 'Name',
-								name: 'name',
-								type: 'string',
-								default: '',
-								description: 'Variable name',
-							},
-							{
-								displayName: 'Value',
-								name: 'value',
-								type: 'string',
-								default: '',
-								description: 'Variable value',
-							},
-					],
-				},
-			],
-		},
-
-	// Assistant Get Phone Numbers Fields
-	{
-		displayName: 'Type Filter',
-		name: 'phoneNumberType',
-		type: 'options',
-		displayOptions: {
-			show: {
-				resource: ['assistant'],
-				operation: ['getPhoneNumbers'],
-			},
-		},
-		options: [
-			{
-				name: 'All',
-				value: '',
-			},
-			{
-				name: 'Inbound',
-				value: 'inbound',
-			},
-			{
-				name: 'Outbound',
-				value: 'outbound',
-			},
-		],
-		default: '',
-		description: 'Filter phone numbers by assistant type',
-	},
-
-	// Assistant Get Voices Fields
-	{
-		displayName: 'Mode Filter',
-		name: 'voiceMode',
-		type: 'options',
-		displayOptions: {
-			show: {
-				resource: ['assistant'],
-				operation: ['getVoices'],
-			},
-		},
-		options: [
-			{
-				name: 'All',
-				value: '',
-			},
-			{
-				name: 'Multimodal',
-				value: 'multimodal',
-			},
-			{
-				name: 'Pipeline',
-				value: 'pipeline',
-			},
-		],
-		default: '',
-		description: 'Filter voices by assistant mode',
-	},
-
-		// Call List Fields (Filters)
-		{
-			displayName: 'Filters',
-			name: 'filters',
-			type: 'collection',
-			placeholder: 'Add Filter',
-			default: {},
-			displayOptions: {
-				show: {
-					resource: ['call'],
-					operation: ['list'],
-				},
-			},
-		options: [
 			{
 				displayName: 'Assistant ID',
-				name: 'assistant_id',
-				type: 'number',
-				default: 0,
-				description: 'Filter calls by assistant ID',
-			},
-			{
-				displayName: 'Campaign ID',
-				name: 'campaign_id',
-				type: 'number',
-				default: 0,
-				description: 'Filter calls by campaign ID',
-			},
-			{
-				displayName: 'Date From',
-				name: 'date_from',
+				name: 'getAssistantId',
 				type: 'string',
-				default: '',
-				placeholder: 'YYYY-MM-DD',
-				description: 'Filter calls from this date',
-			},
-			{
-				displayName: 'Date To',
-				name: 'date_to',
-				type: 'string',
-				default: '',
-				placeholder: 'YYYY-MM-DD',
-				description: 'Filter calls until this date',
-			},
-			{
-				displayName: 'Page',
-				name: 'page',
-				type: 'number',
-				default: 1,
-				description: 'Page number',
-				typeOptions: {
-					minValue: 1,
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+						operation: ['get'],
+					},
 				},
-			},
-			{
-				displayName: 'Per Page',
-				name: 'per_page',
-				type: 'number',
-				default: 15,
-				description: 'Number of calls per page (1-100)',
-				typeOptions: {
-					minValue: 1,
-					maxValue: 100,
-				},
-			},
-			{
-				displayName: 'Phone Number',
-				name: 'phone_number',
-				type: 'string',
 				default: '',
-				description: 'Filter calls by client phone number',
+				placeholder: '22222222-2222-4222-8222-222222222222',
+				description: 'Assistant UUID',
 			},
-			{
-				displayName: 'Status',
-				name: 'status',
-				type: 'options',
-				options: [
-					{ name: 'Busy', value: 'busy' },
-					{ name: 'Completed', value: 'completed' },
-					{ name: 'Ended', value: 'ended' },
-					{ name: 'Ended by Assistant', value: 'ended_by_assistant' },
-					{ name: 'Ended by Customer', value: 'ended_by_customer' },
-					{ name: 'Failed', value: 'failed' },
-					{ name: 'In Progress', value: 'in-progress' },
-					{ name: 'Initiated', value: 'initiated' },
-					{ name: 'No Answer', value: 'no-answer' },
-					{ name: 'Ringing', value: 'ringing' },
-				],
-				default: 'initiated',
-				description: 'Filter calls by status',
-			},
-			{
-				displayName: 'Type',
-				name: 'type',
-				type: 'options',
-				options: [
-					{ name: 'Inbound', value: 'inbound' },
-					{ name: 'Outbound', value: 'outbound' },
-					{ name: 'Web', value: 'web' },
-				],
-				default: 'inbound',
-				description: 'Filter calls by type',
-			},
-		],
-		},
 
-		// Campaign Update Status Fields
-		{
-			displayName: 'Campaign ID',
-			name: 'campaignId',
+			{
+				displayName: 'Return All',
+				name: 'returnAllAssistants',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+						operation: ['getAll'],
+					},
+				},
+				default: false,
+				description: 'Whether to return all results or only up to a given limit',
+			},
+			{
+				displayName: 'Limit',
+				name: 'assistantLimit',
 				type: 'number',
+				displayOptions: {
+					show: {
+						resource: ['assistant'],
+						operation: ['getAll'],
+						returnAllAssistants: [false],
+					},
+				},
+				typeOptions: {
+					minValue: 1,
+					maxValue: 200,
+				},
+				default: 50,
+				description: 'Max number of results to return',
+			},
+
+			{
+				displayName: 'Name',
+				name: 'campaignName',
+				type: 'string',
 				required: true,
 				displayOptions: {
 					show: {
 						resource: ['campaign'],
-						operation: ['updateStatus'],
+						operation: ['create'],
 					},
 				},
-				default: 0,
-				description: 'The ID of the campaign to update',
+				default: '',
+				description: 'Display name of the campaign',
 			},
 			{
-				displayName: 'Action',
-				name: 'action',
-				type: 'options',
-				required: true,
+				displayName: 'Additional Fields',
+				name: 'campaignAdditionalFields',
+				type: 'collection',
+				placeholder: 'Add Field',
+				default: {},
 				displayOptions: {
 					show: {
 						resource: ['campaign'],
-						operation: ['updateStatus'],
+						operation: ['create'],
 					},
 				},
-			options: [
-				{
-					name: 'Start',
-					value: 'start',
-					action: 'Start a campaign',
-				},
-				{
-					name: 'Stop',
-					value: 'stop',
-					action: 'Stop a campaign',
-				},
-			],
-			default: 'start',
-		},
+				options: [
+					{
+						displayName: 'Assistant Name or ID',
+						name: 'assistant_id',
+						type: 'options',
+						typeOptions: {
+							loadOptionsMethod: 'getAssistants',
+						},
+						default: '',
+						description:
+							'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+					},
+				],
+			},
 
-	// SMS Send Fields
-	{
-		displayName: 'From Phone Number Name or ID',
-		name: 'fromPhoneNumberId',
-		type: 'options',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['sms'],
-				operation: ['send'],
-			},
-		},
-		typeOptions: {
-			loadOptionsMethod: 'getPhoneNumbers',
-		},
-		default: '',
-		description: 'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-	},
-		{
-			displayName: 'To Phone Number',
-			name: 'toPhoneNumber',
-			type: 'string',
-			required: true,
-			displayOptions: {
-				show: {
-					resource: ['sms'],
-					operation: ['send'],
-				},
-			},
-			default: '',
-			placeholder: '+1234567890',
-			description: 'The recipient\'s phone number in international format',
-		},
-		{
-			displayName: 'Message Body',
-			name: 'messageBody',
-			type: 'string',
-			required: true,
-			displayOptions: {
-				show: {
-					resource: ['sms'],
-					operation: ['send'],
-				},
-			},
-			typeOptions: {
-				rows: 4,
-			},
-			default: '',
-			description: 'The SMS message content (max 300 characters)',
-		},
-
-	// AI Generate Reply Fields
-	{
-		displayName: 'Assistant ID',
-		name: 'aiAssistantId',
-		type: 'number',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['ai'],
-				operation: ['generateReply'],
-			},
-		},
-		default: 0,
-		description: 'The ID of the assistant to use for generating the response',
-	},
-	{
-		displayName: 'Customer Identifier',
-		name: 'customerIdentifier',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['ai'],
-				operation: ['generateReply'],
-			},
-		},
-		default: '',
-		placeholder: '+49155551234',
-		description: 'A unique identifier for the customer (e.g., phone number, email, CRM contact ID). Maximum length: 255 characters.',
-	},
-	{
-		displayName: 'Message',
-		name: 'aiMessage',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['ai'],
-				operation: ['generateReply'],
-			},
-		},
-		typeOptions: {
-			rows: 4,
-		},
-		default: '',
-		description: 'The customer\'s message to respond to',
-	},
-	{
-		displayName: 'Variables',
-		name: 'aiVariables',
-		type: 'fixedCollection',
-		typeOptions: {
-			multipleValues: true,
-		},
-		displayOptions: {
-			show: {
-				resource: ['ai'],
-				operation: ['generateReply'],
-			},
-		},
-		default: {},
-		description: 'Optional context variables to pass to the assistant',
-		options: [
 			{
-				displayName: 'Variables',
-				name: 'variables',
-				values: [
+				displayName: 'Filters',
+				name: 'campaignFilters',
+				type: 'collection',
+				placeholder: 'Add Filter',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['campaign'],
+						operation: ['getAll'],
+					},
+				},
+				options: [
 					{
-						displayName: 'Name',
-						name: 'name',
-						type: 'string',
-						default: '',
-						description: 'Variable name',
+						displayName: 'Limit',
+						name: 'pageLimit',
+						type: 'number',
+						typeOptions: {
+							minValue: 1,
+						},
+						default: 50,
+						description: 'Maximum number of campaigns to return (1-200)',
 					},
 					{
-						displayName: 'Value',
-						name: 'value',
-						type: 'string',
-						default: '',
-						description: 'Variable value',
+						displayName: 'Offset',
+						name: 'offset',
+						type: 'number',
+						typeOptions: {
+							minValue: 0,
+						},
+						default: 0,
+						description: 'Number of campaigns to skip',
+					},
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						options: [
+							{
+								name: 'Archived',
+								value: 'archived',
+							},
+							{
+								name: 'Completed',
+								value: 'completed',
+							},
+							{
+								name: 'Draft',
+								value: 'draft',
+							},
+							{
+								name: 'Paused',
+								value: 'paused',
+							},
+							{
+								name: 'Running',
+								value: 'running',
+							},
+							{
+								name: 'Scheduled',
+								value: 'scheduled',
+							},
+						],
+						default: 'draft',
+						description: 'Return only campaigns with this status',
 					},
 				],
 			},
 		],
-	},
-
-	// Conversation Create Fields
-	{
-		displayName: 'Assistant ID (UUID)',
-		name: 'conversationAssistantId',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['create'],
-			},
-		},
-		default: '',
-		placeholder: '550e8400-e29b-41d4-a716-446655440000',
-		description: 'The UUID of the assistant to start the conversation with',
-	},
-	{
-		displayName: 'Type',
-		name: 'conversationType',
-		type: 'options',
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['create'],
-			},
-		},
-		options: [
-			{
-				name: 'Widget',
-				value: 'widget',
-				description: 'Web widget conversation (charged)',
-			},
-			{
-				name: 'Test',
-				value: 'test',
-				description: 'Test conversation (free, for development)',
-			},
-		],
-		default: 'widget',
-		description: 'The type of conversation',
-	},
-	{
-		displayName: 'Variables',
-		name: 'conversationCreateVariables',
-		type: 'fixedCollection',
-		typeOptions: {
-			multipleValues: true,
-		},
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['create'],
-			},
-		},
-		default: {},
-		description: 'Custom variables to pass to the assistant',
-		options: [
-			{
-				displayName: 'Variables',
-				name: 'variables',
-				values: [
-					{
-						displayName: 'Name',
-						name: 'name',
-						type: 'string',
-						default: '',
-						description: 'Variable name',
-					},
-					{
-						displayName: 'Value',
-						name: 'value',
-						type: 'string',
-						default: '',
-						description: 'Variable value',
-					},
-				],
-			},
-		],
-	},
-
-	// Conversation Get Fields
-	{
-		displayName: 'Conversation ID (UUID)',
-		name: 'conversationId',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['get'],
-			},
-		},
-		default: '',
-		placeholder: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
-		description: 'The unique UUID identifier of the conversation to retrieve',
-	},
-
-	// Conversation Send Message Fields
-	{
-		displayName: 'Conversation ID (UUID)',
-		name: 'conversationMessageId',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['sendMessage'],
-			},
-		},
-		default: '',
-		placeholder: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
-		description: 'The unique UUID identifier of the conversation',
-	},
-	{
-		displayName: 'Message',
-		name: 'conversationMessage',
-		type: 'string',
-		required: true,
-		displayOptions: {
-			show: {
-				resource: ['conversation'],
-				operation: ['sendMessage'],
-			},
-		},
-		typeOptions: {
-			rows: 4,
-		},
-		default: '',
-		description: 'The user\'s message to send to the assistant (max 2000 characters)',
-	},
-	],
 	};
 
 	methods = {
 		loadOptions: {
-			async getOutboundAssistants(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const options = {
-					method: 'GET' as 'GET',
-					url: 'https://app.famulor.de/api/user/assistants/outbound',
-					json: true,
-				};
-
-				try {
-					const response = await this.helpers.httpRequestWithAuthentication.call(this, 'famulorApi', options);
-
-					if (!Array.isArray(response)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format');
-					}
-
-					if (response.length === 0) {
-						return [
-							{
-								name: 'No Outbound Assistants Found. Create One First.',
-								value: '',
-							},
-						];
-					}
-
-					return response.map((assistant: any) => ({
-						name: assistant.name,
-						value: assistant.id,
-					}));
-				} catch (error) {
-				throw new NodeOperationError(this.getNode(), `Failed to load assistants: ${error.message}`);
-			}
+			getAssistants: loadAssistants,
+			getPhoneNumbers: loadPhoneNumbers,
 		},
-		async getPhoneNumbers(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-			const options = {
-				method: 'GET' as 'GET',
-				url: 'https://app.famulor.de/api/user/assistants/phone-numbers',
-				json: true,
-			};
+	};
 
-			try {
-				const response = await this.helpers.httpRequestWithAuthentication.call(this, 'famulorApi', options);
-
-				if (!Array.isArray(response)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format');
-				}
-
-				if (response.length === 0) {
-					return [
-						{
-							name: 'No Phone Numbers Found. Purchase One First.',
-							value: '',
-						},
-					];
-				}
-
-				return response.map((phoneNumber: any) => ({
-					name: `${phoneNumber.phone_number} (${phoneNumber.type_label})`,
-					value: phoneNumber.id,
-				}));
-			} catch (error) {
-				throw new NodeOperationError(this.getNode(), `Failed to load phone numbers: ${error.message}`);
-			}
-		},
-	},
-};
-
-async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
 		for (let i = 0; i < items.length; i++) {
-			const resource = this.getNodeParameter('resource', i) as string;
+			const resource = this.getNodeParameter('resource', i) as Resource;
 			const operation = this.getNodeParameter('operation', i) as string;
 
 			try {
 				if (resource === 'call') {
-					if (operation === 'delete') {
-						const callId = this.getNodeParameter('callId', i) as number;
-
-						const options = {
-							method: 'DELETE' as 'DELETE',
-							url: `https://app.famulor.de/api/user/calls/${callId}`,
-							json: true,
-						};
-
-						const response = await makeRequestWithRetry(this, options);
-						returnData.push({ 
-							json: response,
-							pairedItem: { item: i }
-						});
-
-					} else if (operation === 'get') {
-						const callId = this.getNodeParameter('callId', i) as number;
-
-						const options = {
-							method: 'GET' as 'GET',
-							url: `https://app.famulor.de/api/user/calls/${callId}`,
-							json: true,
-						};
-
-						const response = await makeRequestWithRetry(this, options);
-						returnData.push({ 
-							json: response,
-							pairedItem: { item: i }
-						});
-
-					} else if (operation === 'make') {
-						const assistant = this.getNodeParameter('assistant', i) as string;
-						const phoneNumber = this.getNodeParameter('phoneNumber', i) as string;
-						const variablesCollection = this.getNodeParameter('variables', i) as { variables: Array<{ name: string; value: string }> };
-
-					// Convert variables from collection format to object format expected by API
-					const variables: { [key: string]: string } = {};
-					if (variablesCollection.variables) {
-						variablesCollection.variables.forEach(variable => {
-							if (variable.name && variable.value) {
-								variables[variable.name] = variable.value;
-							}
-						});
-					}
-
-				const options = {
-					method: 'POST' as 'POST',
-					url: 'https://app.famulor.de/api/user/make_call',
-					body: {
-						assistant_id: assistant,
-						phone_number: phoneNumber,
-						variables: variables,
-					},
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-				} else if (operation === 'list') {
-					const filters = this.getNodeParameter('filters', i, {}) as {
-						status?: string;
-						type?: string;
-						phone_number?: string;
-						assistant_id?: number;
-						campaign_id?: number;
-						date_from?: string;
-						date_to?: string;
-						per_page?: number;
-						page?: number;
-					};
-
-				// Build query parameters
-				const queryParams: string[] = [];
-				Object.entries(filters).forEach(([key, value]) => {
-					if (value !== undefined && value !== '' && value !== 0) {
-						queryParams.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
-					}
-				});
-
-				const queryString = queryParams.length > 0 
-					? '?' + queryParams.join('&')
-					: '';
-
-					const options = {
-						method: 'GET' as 'GET',
-						url: `https://app.famulor.de/api/user/calls${queryString}`,
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-
-					if (!response.data || !Array.isArray(response.data)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected data array', { itemIndex: i });
-					}
-
-					// Return each call as a separate item
-					response.data.forEach((call: any) => {
-						returnData.push({ 
-							json: call,
-							pairedItem: { item: i }
-						});
-					});
-
+					await executeCall.call(this, operation as CallOperation, i, returnData);
+				} else if (resource === 'assistant') {
+					await executeAssistant.call(this, operation as AssistantOperation, i, returnData);
+				} else if (resource === 'campaign') {
+					await executeCampaign.call(this, operation as CampaignOperation, i, returnData);
 				} else {
+					const _exhaustive: never = resource;
 					throw new NodeOperationError(
 						this.getNode(),
-						`The operation "${operation}" is not known!`,
+						`The resource "${_exhaustive}" is not known!`,
 						{ itemIndex: i },
 					);
 				}
-		} else if (resource === 'assistant') {
-				if (operation === 'getAssistants') {
-					const options = {
-						method: 'GET' as 'GET',
-						url: 'https://app.famulor.de/api/user/assistants',
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-
-					if (!Array.isArray(response)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
-					}
-
-					// Return each assistant as a separate item
-					response.forEach((assistant: any) => {
-						returnData.push({ 
-							json: assistant,
-							pairedItem: { item: i }
-				});
-			});
-
-			} else if (operation === 'getLanguages') {
-				const options = {
-					method: 'GET' as 'GET',
-					url: 'https://app.famulor.de/api/user/assistants/languages',
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-
-				if (!Array.isArray(response)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
-				}
-
-				// Return each language as a separate item
-				response.forEach((language: any) => {
-					returnData.push({ 
-						json: language,
-						pairedItem: { item: i }
-				});
-			});
-
-			} else if (operation === 'getModels') {
-				const options = {
-					method: 'GET' as 'GET',
-					url: 'https://app.famulor.de/api/user/assistants/models',
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-
-				if (!Array.isArray(response)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
-				}
-
-				// Return each model as a separate item
-				response.forEach((model: any) => {
-					returnData.push({ 
-						json: model,
-						pairedItem: { item: i }
+			} catch (error) {
+				if (this.continueOnFail()) {
+					returnData.push({
+						json: { error: error instanceof Error ? error.message : String(error) },
+						pairedItem: { item: i },
 					});
-				});
-
-			} else if (operation === 'getPhoneNumbers') {
-					const phoneNumberType = this.getNodeParameter('phoneNumberType', i, '') as string;
-
-					const queryString = phoneNumberType ? `?type=${encodeURIComponent(phoneNumberType)}` : '';
-
-					const options = {
-						method: 'GET' as 'GET',
-						url: `https://app.famulor.de/api/user/assistants/phone-numbers${queryString}`,
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-
-					if (!Array.isArray(response)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
-					}
-
-					// Return each phone number as a separate item
-					response.forEach((phoneNumber: any) => {
-						returnData.push({ 
-							json: phoneNumber,
-							pairedItem: { item: i }
-					});
-				});
-
-			} else if (operation === 'getVoices') {
-				const voiceMode = this.getNodeParameter('voiceMode', i, '') as string;
-
-				const queryString = voiceMode ? `?mode=${encodeURIComponent(voiceMode)}` : '';
-
-				const options = {
-					method: 'GET' as 'GET',
-					url: `https://app.famulor.de/api/user/assistants/voices${queryString}`,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-
-				if (!Array.isArray(response)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
+					continue;
 				}
-
-				// Return each voice as a separate item
-				response.forEach((voice: any) => {
-					returnData.push({ 
-						json: voice,
-						pairedItem: { item: i }
-					});
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else if (resource === 'campaign') {
-				if (operation === 'list') {
-					const options = {
-						method: 'GET' as 'GET',
-						url: 'https://app.famulor.de/api/user/campaigns',
-						json: true,
-					};
-
-				const response = await makeRequestWithRetry(this, options);
-
-				// Handle both array response and object with campaigns property
-				let campaigns = response;
-				if (response.campaigns && Array.isArray(response.campaigns)) {
-					campaigns = response.campaigns;
-				}
-
-				if (!Array.isArray(campaigns)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format', { itemIndex: i });
-				}
-
-				// Return each campaign as a separate item
-				campaigns.forEach((campaign: any) => {
-					returnData.push({ 
-						json: campaign,
-						pairedItem: { item: i }
-					});
-				});
-
-				} else if (operation === 'updateStatus') {
-					const campaignId = this.getNodeParameter('campaignId', i) as number;
-					const action = this.getNodeParameter('action', i) as string;
-
-					const options = {
-						method: 'POST' as 'POST',
-						url: 'https://app.famulor.de/api/user/campaigns/update-status',
-						body: {
-							campaign_id: campaignId,
-							action: action,
-						},
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-					returnData.push({ 
-						json: response,
-						pairedItem: { item: i }
-					});
-
-				} else {
-					throw new NodeOperationError(
-						this.getNode(),
-						`The operation "${operation}" is not known!`,
-						{ itemIndex: i },
-					);
-				}
-		} else if (resource === 'lead') {
-			if (operation === 'delete') {
-				const leadId = this.getNodeParameter('leadId', i) as number;
-
-				const options = {
-					method: 'DELETE' as 'DELETE',
-					url: `https://app.famulor.de/api/user/leads/${leadId}`,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'list') {
-				const options = {
-					method: 'GET' as 'GET',
-					url: 'https://app.famulor.de/api/user/leads',
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-
-				// Handle both direct array response and object with leads property
-				let leads = response;
-				if (response.leads && Array.isArray(response.leads)) {
-					leads = response.leads;
-				}
-
-				if (!Array.isArray(leads)) {
-					throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
-				}
-
-				// Return each lead as a separate item
-				leads.forEach((lead: any) => {
-					returnData.push({ 
-						json: lead,
-						pairedItem: { item: i }
-					});
-				});
-
-			} else if (operation === 'update') {
-				const leadId = this.getNodeParameter('leadId', i) as number;
-				const updateFields = this.getNodeParameter('updateFields', i, {}) as {
-					campaign_id?: number;
-					phone_number?: string;
-					status?: string;
-					variables?: { variables: Array<{ name: string; value: string }> };
-				};
-
-				// Build the update body
-				const body: any = {};
-
-				if (updateFields.campaign_id !== undefined && updateFields.campaign_id !== 0) {
-					body.campaign_id = updateFields.campaign_id;
-				}
-
-				if (updateFields.phone_number) {
-					body.phone_number = updateFields.phone_number;
-				}
-
-				if (updateFields.status) {
-					body.status = updateFields.status;
-				}
-
-				if (updateFields.variables && updateFields.variables.variables) {
-					const variables: { [key: string]: string } = {};
-					updateFields.variables.variables.forEach(variable => {
-						if (variable.name && variable.value) {
-							variables[variable.name] = variable.value;
-						}
-					});
-					body.variables = variables;
-				}
-
-				const options = {
-					method: 'PUT' as 'PUT',
-					url: `https://app.famulor.de/api/user/leads/${leadId}`,
-					body: body,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else if (resource === 'sms') {
-				if (operation === 'send') {
-					const fromPhoneNumberId = this.getNodeParameter('fromPhoneNumberId', i) as number;
-					const toPhoneNumber = this.getNodeParameter('toPhoneNumber', i) as string;
-					const messageBody = this.getNodeParameter('messageBody', i) as string;
-
-					const options = {
-						method: 'POST' as 'POST',
-						url: 'https://app.famulor.de/api/user/sms',
-						body: {
-							from: fromPhoneNumberId,
-							to: toPhoneNumber,
-							body: messageBody,
-						},
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-					returnData.push({ 
-						json: response,
-						pairedItem: { item: i }
-					});
-
-				} else {
-					throw new NodeOperationError(
-						this.getNode(),
-						`The operation "${operation}" is not known!`,
-						{ itemIndex: i },
-					);
-				}
-		} else if (resource === 'tool') {
-			if (operation === 'create') {
-				const toolName = this.getNodeParameter('toolName', i) as string;
-				const toolDescription = this.getNodeParameter('toolDescription', i) as string;
-				const endpoint = this.getNodeParameter('endpoint', i) as string;
-				const method = this.getNodeParameter('method', i) as string;
-				const timeout = this.getNodeParameter('timeout', i, 10) as number;
-				const headersCollection = this.getNodeParameter('headers', i, {}) as { headers?: Array<{ name: string; value: string }> };
-				const schemaCollection = this.getNodeParameter('schema', i, {}) as { parameters?: Array<{ name: string; type: string; description: string }> };
-
-				// Build headers array
-				const headers: Array<{ name: string; value: string }> = [];
-				if (headersCollection.headers) {
-					headersCollection.headers.forEach(header => {
-						if (header.name && header.value) {
-							headers.push({ name: header.name, value: header.value });
-						}
-					});
-				}
-
-				// Build schema array
-				const schema: Array<{ name: string; type: string; description: string }> = [];
-				if (schemaCollection.parameters) {
-					schemaCollection.parameters.forEach(param => {
-						if (param.name && param.type && param.description) {
-							schema.push({ 
-								name: param.name, 
-								type: param.type, 
-								description: param.description 
-							});
-						}
-					});
-				}
-
-				const options = {
-					method: 'POST' as 'POST',
-					url: 'https://app.famulor.de/api/user/tools',
-					body: {
-						name: toolName,
-						description: toolDescription,
-						endpoint: endpoint,
-						method: method,
-						timeout: timeout,
-						headers: headers,
-						schema: schema,
-					},
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'delete') {
-				const toolId = this.getNodeParameter('toolId', i) as number;
-
-				const options = {
-					method: 'DELETE' as 'DELETE',
-					url: `https://app.famulor.de/api/user/tools/${toolId}`,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'get') {
-				const toolId = this.getNodeParameter('toolId', i) as number;
-
-				const options = {
-					method: 'GET' as 'GET',
-					url: `https://app.famulor.de/api/user/tools/${toolId}`,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'list') {
-					const options = {
-						method: 'GET' as 'GET',
-						url: 'https://app.famulor.de/api/user/tools',
-						json: true,
-					};
-
-					const response = await makeRequestWithRetry(this, options);
-
-					if (!Array.isArray(response)) {
-						throw new NodeOperationError(this.getNode(), 'Invalid response format - expected array', { itemIndex: i });
-					}
-
-					// Return each tool as a separate item
-					response.forEach((tool: any) => {
-						returnData.push({ 
-							json: tool,
-							pairedItem: { item: i }
-					});
-				});
-
-			} else if (operation === 'update') {
-				const toolId = this.getNodeParameter('toolId', i) as number;
-				const updateToolFields = this.getNodeParameter('updateToolFields', i, {}) as {
-					name?: string;
-					description?: string;
-					endpoint?: string;
-					method?: string;
-					timeout?: number;
-					headers?: { headers?: Array<{ name: string; value: string }> };
-					schema?: { parameters?: Array<{ name: string; type: string; description: string }> };
-				};
-
-				// Build the update body
-				const body: any = {};
-
-				if (updateToolFields.name) {
-					body.name = updateToolFields.name;
-				}
-
-				if (updateToolFields.description) {
-					body.description = updateToolFields.description;
-				}
-
-				if (updateToolFields.endpoint) {
-					body.endpoint = updateToolFields.endpoint;
-				}
-
-				if (updateToolFields.method) {
-					body.method = updateToolFields.method;
-				}
-
-				if (updateToolFields.timeout !== undefined) {
-					body.timeout = updateToolFields.timeout;
-				}
-
-				if (updateToolFields.headers && updateToolFields.headers.headers) {
-					const headers: Array<{ name: string; value: string }> = [];
-					updateToolFields.headers.headers.forEach(header => {
-						if (header.name && header.value) {
-							headers.push({ name: header.name, value: header.value });
-						}
-					});
-					body.headers = headers;
-				}
-
-				if (updateToolFields.schema && updateToolFields.schema.parameters) {
-					const schema: Array<{ name: string; type: string; description: string }> = [];
-					updateToolFields.schema.parameters.forEach(param => {
-						if (param.name && param.type && param.description) {
-							schema.push({ 
-								name: param.name, 
-								type: param.type, 
-								description: param.description 
-							});
-						}
-					});
-					body.schema = schema;
-				}
-
-				const options = {
-					method: 'PUT' as 'PUT',
-					url: `https://app.famulor.de/api/user/tools/${toolId}`,
-					body: body,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else if (resource === 'user') {
-			if (operation === 'get') {
-				const options = {
-					method: 'GET' as 'GET',
-					url: 'https://app.famulor.de/api/user/me',
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else if (resource === 'ai') {
-			if (operation === 'generateReply') {
-				const assistantId = this.getNodeParameter('aiAssistantId', i) as number;
-				const customerIdentifier = this.getNodeParameter('customerIdentifier', i) as string;
-				const message = this.getNodeParameter('aiMessage', i) as string;
-				const variablesCollection = this.getNodeParameter('aiVariables', i, {}) as { variables?: Array<{ name: string; value: string }> };
-
-				// Convert variables from collection format to object format expected by API
-				const variables: { [key: string]: string } = {};
-				if (variablesCollection.variables) {
-					variablesCollection.variables.forEach(variable => {
-						if (variable.name && variable.value) {
-							variables[variable.name] = variable.value;
-						}
-					});
-				}
-
-				const body: any = {
-					assistant_id: assistantId,
-					customer_identifier: customerIdentifier,
-					message: message,
-				};
-
-				if (Object.keys(variables).length > 0) {
-					body.variables = variables;
-				}
-
-				const options = {
-					method: 'POST' as 'POST',
-					url: 'https://app.famulor.de/api/ai/generate-reply',
-					body: body,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else if (resource === 'conversation') {
-			if (operation === 'create') {
-				const assistantId = this.getNodeParameter('conversationAssistantId', i) as string;
-				const type = this.getNodeParameter('conversationType', i, 'widget') as string;
-				const variablesCollection = this.getNodeParameter('conversationCreateVariables', i, {}) as { variables?: Array<{ name: string; value: string }> };
-
-				// Convert variables from collection format to object format expected by API
-				const variables: { [key: string]: string } = {};
-				if (variablesCollection.variables) {
-					variablesCollection.variables.forEach(variable => {
-						if (variable.name && variable.value) {
-							variables[variable.name] = variable.value;
-						}
-					});
-				}
-
-				const body: any = {
-					assistant_id: assistantId,
-					type: type,
-				};
-
-				if (Object.keys(variables).length > 0) {
-					body.variables = variables;
-				}
-
-				const options = {
-					method: 'POST' as 'POST',
-					url: 'https://app.famulor.de/api/conversations',
-					body: body,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'get') {
-				const conversationId = this.getNodeParameter('conversationId', i) as string;
-
-				const options = {
-					method: 'GET' as 'GET',
-					url: `https://app.famulor.de/api/conversations/${conversationId}`,
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else if (operation === 'sendMessage') {
-				const conversationId = this.getNodeParameter('conversationMessageId', i) as string;
-				const message = this.getNodeParameter('conversationMessage', i) as string;
-
-				const options = {
-					method: 'POST' as 'POST',
-					url: `https://app.famulor.de/api/conversations/${conversationId}/messages`,
-					body: {
-						message: message,
-					},
-					json: true,
-				};
-
-				const response = await makeRequestWithRetry(this, options);
-				returnData.push({ 
-					json: response,
-					pairedItem: { item: i }
-				});
-
-			} else {
-				throw new NodeOperationError(
-					this.getNode(),
-					`The operation "${operation}" is not known!`,
-					{ itemIndex: i },
-				);
-			}
-		} else {
-			throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not known!`, {
-				itemIndex: i,
-			});
-		}
-
-		} catch (error) {
-			if (this.continueOnFail()) {
-				returnData.push({ 
-					json: { error: error.message },
-					pairedItem: { item: i }
-				});
-				continue;
-			}
-				throw new NodeOperationError(this.getNode(), `Failed to execute ${resource}:${operation}: ${error.message}`, {
-					itemIndex: i,
-				});
+				toNodeError(this, error, i, resource, operation);
 			}
 		}
 
 		return [returnData];
+	}
+}
+
+async function executeCall(
+	this: IExecuteFunctions,
+	operation: CallOperation,
+	itemIndex: number,
+	returnData: INodeExecutionData[],
+): Promise<void> {
+	switch (operation) {
+		case 'make': {
+			const assistantId = this.getNodeParameter('assistantId', itemIndex) as string;
+			const toNumber = this.getNodeParameter('toNumber', itemIndex) as string;
+			const additionalFields = this.getNodeParameter('additionalFields', itemIndex, {}) as {
+				phoneNumberId?: string;
+				lead?: unknown;
+			};
+
+			if (!assistantId) {
+				throw new NodeOperationError(this.getNode(), 'Assistant ID is required', { itemIndex });
+			}
+			if (!isE164(toNumber)) {
+				throw new NodeOperationError(
+					this.getNode(),
+					'To Number must be E.164, for example +4930123456',
+					{ itemIndex },
+				);
+			}
+
+			const body = buildMakeCallBody({
+				assistantId,
+				toNumber,
+				phoneNumberId: additionalFields.phoneNumberId || undefined,
+				lead: parseLead(additionalFields.lead),
+			});
+
+			const response = await famulorApiRequest.call(this, 'POST', '/calls', body as IDataObject);
+			returnData.push({
+				json: asJson(unwrapResource(response)),
+				pairedItem: { item: itemIndex },
+			});
+			return;
+		}
+		case 'get': {
+			const callId = this.getNodeParameter('callId', itemIndex) as string;
+			const response = await famulorApiRequest.call(this, 'GET', `/calls/${callId}`);
+			returnData.push({
+				json: asJson(unwrapResource(response)),
+				pairedItem: { item: itemIndex },
+			});
+			return;
+		}
+		case 'getAll': {
+			const filters = this.getNodeParameter('filters', itemIndex, {}) as IDataObject;
+			const qs: IDataObject = {};
+			for (const [key, value] of Object.entries(filters)) {
+				if (value === undefined || value === '' || value === null) {
+					continue;
+				}
+				qs[key === 'pageLimit' ? 'limit' : key] = value;
+			}
+			const response = await famulorApiRequest.call(this, 'GET', '/calls', {}, qs);
+			const calls = extractListItems(response, ['data', 'items', 'calls']);
+			for (const call of calls) {
+				returnData.push({
+					json: asJson(unwrapResource(call)),
+					pairedItem: { item: itemIndex },
+				});
+			}
+			return;
+		}
+		default: {
+			const _exhaustive: never = operation;
+			throw new NodeOperationError(this.getNode(), `The operation "${_exhaustive}" is not known!`, {
+				itemIndex,
+			});
+		}
+	}
+}
+
+async function executeAssistant(
+	this: IExecuteFunctions,
+	operation: AssistantOperation,
+	itemIndex: number,
+	returnData: INodeExecutionData[],
+): Promise<void> {
+	switch (operation) {
+		case 'create': {
+			const name = this.getNodeParameter('assistantName', itemIndex) as string;
+			const additionalFields = this.getNodeParameter(
+				'assistantAdditionalFields',
+				itemIndex,
+				{},
+			) as IDataObject;
+			const body: IDataObject = { name };
+			if (additionalFields.system_prompt) {
+				body.system_prompt = additionalFields.system_prompt;
+			}
+			if (additionalFields.first_message) {
+				body.first_message = additionalFields.first_message;
+			}
+			const response = await famulorApiRequest.call(this, 'POST', '/assistants', body);
+			returnData.push({
+				json: asJson(unwrapResource(response)),
+				pairedItem: { item: itemIndex },
+			});
+			return;
+		}
+		case 'get': {
+			const assistantId = this.getNodeParameter('getAssistantId', itemIndex) as string;
+			const response = await famulorApiRequest.call(this, 'GET', `/assistants/${assistantId}`);
+			returnData.push({
+				json: asJson(unwrapResource(response)),
+				pairedItem: { item: itemIndex },
+			});
+			return;
+		}
+		case 'getAll': {
+			const returnAll = this.getNodeParameter('returnAllAssistants', itemIndex) as boolean;
+			const qs: IDataObject = {};
+			if (!returnAll) {
+				qs.limit = this.getNodeParameter('assistantLimit', itemIndex) as number;
+			} else {
+				qs.limit = 200;
+			}
+			const response = await famulorApiRequest.call(this, 'GET', '/assistants', {}, qs);
+			const assistants = extractListItems(response, ['data', 'items', 'assistants']);
+			for (const assistant of assistants) {
+				returnData.push({
+					json: asJson(unwrapResource(assistant)),
+					pairedItem: { item: itemIndex },
+				});
+			}
+			return;
+		}
+		default: {
+			const _exhaustive: never = operation;
+			throw new NodeOperationError(this.getNode(), `The operation "${_exhaustive}" is not known!`, {
+				itemIndex,
+			});
+		}
+	}
+}
+
+async function executeCampaign(
+	this: IExecuteFunctions,
+	operation: CampaignOperation,
+	itemIndex: number,
+	returnData: INodeExecutionData[],
+): Promise<void> {
+	switch (operation) {
+		case 'create': {
+			const name = this.getNodeParameter('campaignName', itemIndex) as string;
+			const additionalFields = this.getNodeParameter(
+				'campaignAdditionalFields',
+				itemIndex,
+				{},
+			) as IDataObject;
+			const body: IDataObject = { name };
+			if (additionalFields.assistant_id) {
+				body.assistant_id = additionalFields.assistant_id;
+			}
+			const response = await famulorApiRequest.call(this, 'POST', '/campaigns', body);
+			returnData.push({
+				json: asJson(unwrapResource(response)),
+				pairedItem: { item: itemIndex },
+			});
+			return;
+		}
+		case 'getAll': {
+			const filters = this.getNodeParameter('campaignFilters', itemIndex, {}) as IDataObject;
+			const qs: IDataObject = {};
+			for (const [key, value] of Object.entries(filters)) {
+				if (value === undefined || value === '' || value === null) {
+					continue;
+				}
+				qs[key === 'pageLimit' ? 'limit' : key] = value;
+			}
+			const response = await famulorApiRequest.call(this, 'GET', '/campaigns', {}, qs);
+			const campaigns = extractListItems(response, ['data', 'items', 'campaigns']);
+			for (const campaign of campaigns) {
+				returnData.push({
+					json: asJson(unwrapResource(campaign)),
+					pairedItem: { item: itemIndex },
+				});
+			}
+			return;
+		}
+		default: {
+			const _exhaustive: never = operation;
+			throw new NodeOperationError(this.getNode(), `The operation "${_exhaustive}" is not known!`, {
+				itemIndex,
+			});
+		}
 	}
 }

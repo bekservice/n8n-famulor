@@ -1,19 +1,17 @@
 {
 	"node": "n8n-nodes-base.FamulorTrigger",
-	"nodeVersion": "1.0",
+	"nodeVersion": "2.0",
 	"codexVersion": "1.0",
-	"categories": [
-		"Communication"
-	],
+	"categories": ["Communication"],
 	"resources": {
 		"credentialDocumentation": [
 			{
-				"url": "https://docs.famulor.de/api-reference/authentication"
+				"url": "https://app.famulor.io/"
 			}
 		],
 		"primaryDocumentation": [
 			{
-				"url": "https://docs.famulor.de/"
+				"url": "https://www.famulor.io/"
 			}
 		]
 	}
