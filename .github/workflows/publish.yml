@@ -1,0 +1,80 @@
+# Publishes n8n-nodes-famulor to npm on every version tag push.
+#
+# Starting May 1 2026, n8n requires community nodes to be published via
+# GitHub Actions with npm provenance. This workflow satisfies that requirement.
+# Adapted from n8n-io/n8n-nodes-starter (.github/workflows/publish.yml) for
+# this package's existing tsc/gulp scripts (no @n8n/node-cli / npm run release).
+#
+# ─── ONE-TIME SETUP ────────────────────────────────────────────────────────────
+#
+# Option A — OIDC Trusted Publishing (recommended, no long-lived secrets):
+# 1. Log in to npmjs.com as bekservice and open n8n-nodes-famulor settings.
+# 2. Under "Publish access" → "Trusted Publishers", click "Add a publisher".
+# 3. Select GitHub Actions and fill in:
+#      Repository owner: bekservice
+#      Repository name:  n8n-famulor
+#      Workflow name:    publish.yml
+#      Environment:      (leave blank)
+# 4. Leave the NPM_TOKEN secret unset. GitHub's OIDC token is used instead.
+#
+# Option B — npm Automation Token (fallback):
+# 1. On npmjs.com: Access Tokens → Generate New Token → Granular Access Token.
+#    Scope it to n8n-nodes-famulor with "Read and write" publish permission.
+# 2. In GitHub: Settings → Secrets and variables → Actions → New secret.
+#    Name it NPM_TOKEN and paste the token value.
+#
+# Both options work with --provenance. Provenance is signed by GitHub's OIDC
+# infrastructure regardless of how npm authentication is handled.
+#
+# ─── RELEASE PROCESS ───────────────────────────────────────────────────────────
+#
+# 1. Confirm package.json version (already 2.0.0 for this release).
+# 2. Push an annotated tag matching v*.*.* or *.*.* (e.g. v2.0.0).
+# 3. This workflow installs, tests, and runs:
+#      npm publish --provenance --access public
+#    prepublishOnly builds, lints, and re-runs tests.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        # Option A (OIDC): leave NPM_TOKEN unset — the token step is skipped and
+        # npm uses the OIDC exchange instead.
+        # Option B (token): set NPM_TOKEN in repo secrets — it is written to
+        # .npmrc here before publishing.
+        run: |
+          [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm publish --provenance --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
