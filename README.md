@@ -2,9 +2,9 @@
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/n8n-io/n8n/master/assets/n8n-logo.png" alt="n8n" width="280">
-
-<img src="nodes/Famulor/famulor.svg" alt="Famulor Toggle-Mark" width="96" height="96">
+<img src="https://raw.githubusercontent.com/n8n-io/n8n/master/assets/n8n-logo.png" alt="n8n" width="220" valign="middle">
+&emsp;&emsp;&emsp;
+<img src="nodes/Famulor/famulor.png" alt="Famulor Toggle-Mark" width="96" height="96" valign="middle">
 
 </div>
 
