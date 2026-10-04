@@ -1,3 +1,12 @@
+# 2.1.1
+
+- Keep HTTP status codes from n8n API errors and explain personal credit-warning restrictions for service-account keys without exposing raw transport errors.
+- Test the connection through credential self-inspection, so keys without assistant-read scope can connect.
+- Show the user-owned credential requirement before personal credit-warning operations.
+- Remove the editable Base URL from new connections; retain previously saved hosts and the default Famulor origin.
+- Correct signed booking webhook setup and guide call/conversation events to polling when signed delivery is unavailable.
+- Correct native action labels and the credential documentation link.
+
 # 2.1.0
 
 - Add 423 native resource/operation actions covering the current Famulor public API, with generated per-operation fields and 13 searchable resource families.

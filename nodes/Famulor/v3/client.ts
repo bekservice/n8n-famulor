@@ -1,4 +1,5 @@
 import type { IExecuteFunctions, ILoadOptionsFunctions, IPollFunctions, IHttpRequestMethods, IHttpRequestOptions } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import type { ApiField, ApiOperation } from './types';
 import { resolveBaseUrl } from '../api';
 
@@ -93,6 +94,30 @@ export function safeBaseUrl(input?: string): string {
   return resolveBaseUrl(url.origin);
 }
 
+function httpStatus(error: unknown): number | undefined {
+  if (!isRecord(error)) return undefined;
+  const response = isRecord(error.response) ? error.response : {};
+  for (const value of [response.status, response.statusCode, error.statusCode, error.httpCode]) {
+    if (typeof value !== 'number' && !(typeof value === 'string' && /^\d{3}$/.test(value))) continue;
+    const status = Number(value);
+    if (Number.isInteger(status) && status >= 100 && status <= 599) return status;
+  }
+  return undefined;
+}
+
+function failureHint(status: number | undefined, path: string): string {
+  if (status === 403 && path.split('?')[0] === '/me/credit-notifications') {
+    return 'Personal low-credit warning preferences require a user-owned credential with the settings scope. Service-account keys cannot access these preferences. Manage personal warnings in Famulor Settings.';
+  }
+  if (status === 401) return 'Check that the saved API key is valid and has not expired or been revoked.';
+  if (status === 402) return 'Check workspace credits and plan access.';
+  if (status === 403) return 'Check the API key scopes, workspace permissions and feature access.';
+  if (status === 404) return 'Check the resource ID and that it belongs to the connected workspace.';
+  if (status === 429) return 'The request rate limit was reached. Wait before executing again.';
+  if (status !== undefined && status >= 300 && status < 400) return 'A redirect was blocked. Check the saved Famulor connection.';
+  return 'Check inputs, workspace permissions, scopes and credit limits.';
+}
+
 export async function request(context: RequestContext, options: { method: IHttpRequestMethods; path: string; body?: unknown; headers?: Record<string, string>; binary?: boolean }): Promise<unknown> {
   if (!/^\/[a-z0-9]/i.test(options.path) || /[\\#]/.test(options.path) || options.path.split('?')[0].split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid public API path.');
   const credentials = await context.getCredentials('famulorApi');
@@ -105,13 +130,11 @@ export async function request(context: RequestContext, options: { method: IHttpR
   try {
     const response: unknown = await context.helpers.httpRequestWithAuthentication.call(context, 'famulorApi', requestOptions);
     if (!isRecord(response) || typeof response.statusCode !== 'number') throw new Error('Famulor returned an invalid HTTP response.');
-    if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(`Famulor returned HTTP ${response.statusCode}.`);
+    if (response.statusCode < 200 || response.statusCode >= 300) throw { statusCode: response.statusCode };
     return options.binary ? response : response.body;
   } catch (error: unknown) {
-    const record = isRecord(error) ? error : {};
-    const response = isRecord(record.response) ? record.response : {};
-    const status = response.status ?? response.statusCode ?? record.statusCode;
-    throw new Error(`Famulor request failed${typeof status === 'number' ? ` (HTTP ${status})` : ''}. Check inputs, workspace permissions, scopes and credit limits. No automatic retry was made.`);
+    const status = httpStatus(error);
+    throw new NodeOperationError(context.getNode(), `Famulor request failed${status !== undefined ? ` (HTTP ${status})` : ''}. ${failureHint(status, options.path)} No automatic retry was made.`);
   }
 }
 

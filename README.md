@@ -8,7 +8,7 @@ Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)**
 
 1. Install `n8n-nodes-famulor` through **Settings → Community Nodes** in your n8n instance. See the [n8n installation guide](https://docs.n8n.io/integrations/community-nodes/installation-and-management/gui-installation/).
 2. Create a Famulor API key in the workspace you want to automate. Give it only the read/write scopes needed by your workflow.
-3. Add **Famulor API** credentials in n8n, paste the key, and leave the base URL at `https://app.famulor.io`. An HTTPS origin for your verified Famulor whitelabel domain is also supported. The workspace comes from the key.
+3. Add **Famulor API** credentials in n8n, paste the workspace API key. New connections use `https://app.famulor.io` automatically; there is no editable Base URL field. Previously saved connection hosts are retained. The workspace comes from the key.
 4. Add **Famulor**, choose a resource and operation, and fill the required fields. Add optional fields only when you want to send them.
 
 Minimum Node.js is 20.15. The package is compiled and checked against current `n8n-workflow` types and retains the saved version-2 nodes. Classic `.de` keys and `/api/user/*` endpoints are unsupported.
@@ -25,6 +25,8 @@ Every operation in the pinned public OpenAPI contract has a native **Resource �
 - Account, API keys, settings, integrations, billing, dashboards and workspaces
 - Loop, carrier connections, SIP trunks, caller IDs and whitelabel administration
 
+**Personal settings:** low-credit warning preferences and other user-specific operations require user-owned credentials. A service-account workspace key has no associated user; granting additional scopes does not change that. Manage personal warnings in Famulor Settings when using a service-account key.
+
 Famulor enforces workspace scopes, permissions, plan entitlements, feature access and credits. An action being available in n8n does not grant additional access. Billable actions such as calls and SMS consume the normal workspace credits.
 
 ### Input and output behavior
@@ -37,7 +39,7 @@ Famulor enforces workspace scopes, permissions, plan entitlements, feature acces
 - Upload actions accept the API's documented URL/base64 JSON alternatives. The node does not read files from the host filesystem.
 - Requests stay within the configured HTTPS Famulor origin and `/api/v1`. Redirects are not followed, credentials are not echoed in errors, and action output is linked to its input item.
 
-Example read-only action: **Account → Get current user** (`getMe`). Example outbound call: **Calls → Create an outbound call**, select an assistant and provide `to_number` in E.164 format. Create/sending/purchase operations perform real writes when you execute them.
+Example read-only action: **Account → Get current credential** (`getMe`). Example outbound call: **Calls → Start an outbound call**, select an assistant and provide `to_number` in E.164 format. Create/sending/purchase operations perform real writes when you execute them.
 
 ## Polling events
 
@@ -60,13 +62,15 @@ Add **Famulor Trigger** (version 3) for these events:
 
 | Event | Configure the destination in Famulor |
 |---|---|
-| `call.completed` | Settings → Webhooks |
-| `conversation.ended` | Settings → Webhooks with a signing secret |
-| `booking.created` | Booking event type webhook |
-| `booking.cancelled` | Booking event type webhook |
-| `booking.rescheduled` | Booking event type webhook |
+| `call.completed` | An existing signed call-event delivery; otherwise use polling |
+| `conversation.ended` | An existing signed conversation-event delivery; otherwise use polling |
+| `booking.created` | Booking event type → Advanced → Webhook URL |
+| `booking.cancelled` | Booking event type → Advanced → Webhook URL |
+| `booking.rescheduled` | Booking event type → Advanced → Webhook URL |
 
-Copy the n8n Production URL to the appropriate Famulor destination and configure its signing secret. Store that same secret in **Famulor Webhook API** credentials in n8n. The node verifies `X-Famulor-Signature: sha256=<HMAC-SHA256(raw body, secret)>` before returning data. Missing or incorrect signatures are rejected with HTTP 401. The selected event and optional assistant filter must match. Manual webhook tests use the Test URL while the editor is listening.
+For bookings, save the n8n Production URL under **Advanced → Webhook URL** in the booking event type, then copy the generated **Webhook signing secret** shown after the first save. Store that same secret in **Famulor Webhook API** credentials in n8n. The node verifies `X-Famulor-Signature: sha256=<HMAC-SHA256(raw body, secret)>` before returning data. Missing or incorrect signatures are rejected with HTTP 401. The selected event and optional assistant filter must match. Manual webhook tests use the Test URL while the editor is listening.
+
+There is no workspace-wide Settings → Webhooks configuration page. The assistant **Automations → Call completed** URL and messaging connector conversation-ended URLs are unsigned: they cannot be used with this signed trigger. Use **Famulor Polling Trigger → Phone Call Completed / Conversation Completed** for these events unless a signed delivery is already configured.
 
 The signing contract does not include a timestamp or nonce, so the signature alone does not prevent replay. Use event/resource identifiers for downstream idempotency. Existing webhook settings are never changed automatically.
 

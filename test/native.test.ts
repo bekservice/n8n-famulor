@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe,it } from 'node:test';
 import type { IExecuteFunctions,IHttpRequestOptions,INodeParameters } from 'n8n-workflow';
-import { NodeHelpers } from 'n8n-workflow';
+import { NodeApiError, NodeHelpers } from 'n8n-workflow';
 import { Famulor } from '../nodes/Famulor/Famulor.node';
 import { FamulorTrigger } from '../nodes/Famulor/FamulorTrigger.node';
 import { FamulorV3 } from '../nodes/Famulor/v3/FamulorV3.node';
@@ -91,6 +91,25 @@ describe('native API actions',()=>{
   let calls=0;
   await assert.rejects(node.execute.call(context({resource:operation.tag,operation:operation.id,body_assistant_id:uuid,body_to_number:'+4915123456789'},async()=>{calls++;return {statusCode:302,body:{}};})),/request failed/);
   assert.equal(calls,1);
+ });
+ it('explains the real n8n service-account rejection for personal credit warnings without leaking transport details',async()=>{
+  const op=operations.find(op=>op.id==='getCreditNotificationPreferences')!;
+  const error=new NodeApiError({name:'Famulor',typeVersion:3} as never,{message:'Bearer sensitive-key',httpCode:'403'});
+  await assert.rejects(node.execute.call(context({resource:op.tag,operation:op.id},async()=>{throw error;})),(failure:unknown)=>{
+   assert.ok(failure instanceof Error);
+   assert.match(failure.message,/HTTP 403/);
+   assert.match(failure.message,/user-owned credential/);
+   assert.match(failure.message,/Service-account keys/);
+   assert.ok(!failure.message.includes('sensitive-key'));
+   return true;
+  });
+ });
+ it('keeps safe HTTP diagnostics for full non-success responses and string status codes',async()=>{
+  for(const error of [{response:{status:'429',data:{message:'Bearer sensitive-key'}}},{statusCode:401},{httpCode:'402'}]) {
+   const status=Number('httpCode' in error?error.httpCode:'statusCode' in error?error.statusCode:error.response!.status);
+   await assert.rejects(famulorV3Api.request(context({},async()=>{throw error;}),{method:'GET',path:'/me'}),new RegExp(`HTTP ${status}`));
+  }
+  await assert.rejects(famulorV3Api.request(context({},async()=>({statusCode:302,body:{}})),{method:'POST',path:'/calls'}),/HTTP 302/);
  });
  it('preserves the audio response MIME and selects the matching filename',async()=>{
   const op=operations.find(op=>op.binary)!;

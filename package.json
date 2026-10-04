@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-famulor",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Native n8n actions and signed/polling triggers for the Famulor workspace API",
   "keywords": [
     "n8n-community-node-package",

@@ -9,7 +9,7 @@ export class FamulorApi implements ICredentialType {
 	name = 'famulorApi';
 	displayName = 'Famulor API';
 	icon = 'file:famulor.svg' as const;
-	documentationUrl = 'https://app.famulor.io/';
+	documentationUrl = 'https://docs.famulor.io/automations/n8n';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
@@ -21,17 +21,14 @@ export class FamulorApi implements ICredentialType {
 			default: '',
 			placeholder: 'fam_...',
 			description:
-				'Platform 2.0 service-account key starting with fam_. Create it in Famulor at https://app.famulor.io/. Classic 1.0 keys from app.famulor.de are not interchangeable.',
+				'Workspace API key starting with fam_. Create it in Famulor Settings → API & MCP. The key determines the workspace and allowed operations. Personal user preferences require a user-owned credential.',
 			required: true,
 		},
 		{
 			displayName: 'Base URL',
 			name: 'baseUrl',
-			type: 'string',
+			type: 'hidden',
 			default: 'https://app.famulor.io',
-			placeholder: 'https://app.famulor.io',
-			description:
-				'Famulor Platform host. Defaults to https://app.famulor.io. Set a verified custom domain for whitelabel. Do not use https://app.famulor.de (Classic 1.0, no /api/v1).',
 		},
 	];
 
@@ -46,11 +43,8 @@ export class FamulorApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: '={{$credentials.baseUrl}}',
-			url: '/api/v1/assistants',
-			qs: {
-				limit: 1,
-			},
+			baseURL: '={{$credentials.baseUrl || "https://app.famulor.io"}}',
+			url: '/api/v1/me',
 		},
 	};
 }

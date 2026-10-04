@@ -17,7 +17,7 @@ export class FamulorTriggerV3 implements INodeType {
     properties:[
       {displayName:'Event',name:'event',type:'options',required:true,default:'',noDataExpression:true,options:webhookEvents.map(event=>({name:event,value:event}))},
       {displayName:'Assistant ID',name:'assistantId',type:'string',default:'',displayOptions:{show:{event:['call.completed','conversation.ended']}},description:'Optional assistant UUID filter. Events without this assistant ID are ignored.'},
-      {displayName:'Configure the Production URL in Famulor: call.completed in Settings → Webhooks, conversation.ended in Settings → Webhooks with a signing secret, and booking events in the booking event type. Add the same signing secret to Famulor and these n8n credentials. Existing destinations are not changed automatically.',name:'setupNotice',type:'notice',default:''},
+      {displayName:'For signed booking events, save the Production URL in the booking event type under Advanced → Webhook URL, then copy its generated signing secret into Famulor Webhook API credentials. For call and conversation events, use Famulor Polling Trigger unless you already have a signed delivery configured. Assistant call-completed and messaging connector URLs are unsigned and cannot use this signed trigger. Existing destinations are not changed automatically.',name:'setupNotice',type:'notice',default:''},
     ],
   };
   async webhook(this:IWebhookFunctions):Promise<IWebhookResponseData>{
