@@ -7,3 +7,5 @@ dist-test
 npm-debug.log*
 yarn.lock
 .vscode/launch.json
+
+*.tgz

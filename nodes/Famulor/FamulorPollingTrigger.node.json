@@ -1,16 +1,11 @@
 {
-  "node": "n8n-nodes-base.FamulorTrigger",
-  "nodeVersion": "3.0",
+  "node": "n8n-nodes-base.FamulorPollingTrigger",
+  "nodeVersion": "1.0",
   "codexVersion": "1.0",
   "categories": [
     "Communication"
   ],
   "resources": {
-    "credentialDocumentation": [
-      {
-        "url": "https://app.famulor.io/"
-      }
-    ],
     "primaryDocumentation": [
       {
         "url": "https://docs.famulor.io/automations/n8n"

@@ -1,24 +1,27 @@
 {
-	"compilerOptions": {
-		"strict": true,
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"target": "es2019",
-		"lib": ["es2019"],
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
-		"noImplicitAny": true,
-		"noUnusedLocals": true,
-		"strictNullChecks": true,
-		"declaration": false,
-		"sourceMap": false,
-		"outDir": "./dist-test",
-		"rootDir": "."
-	},
-	"include": [
-		"test/**/*.ts",
-		"nodes/Famulor/api.ts",
-		"nodes/Famulor/webhookSignature.ts"
-	]
+  "compilerOptions": {
+    "strict": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2019",
+    "lib": [
+      "es2022",
+      "es2022.error"
+    ],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "strictNullChecks": true,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": "./dist-test",
+    "rootDir": "."
+  },
+  "include": [
+    "test/**/*.ts",
+    "nodes/**/*.ts",
+    "credentials/**/*.ts"
+  ]
 }

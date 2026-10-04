@@ -1,3 +1,13 @@
+# 2.1.0
+
+- Add 423 native resource/operation actions covering the current Famulor public API, with generated per-operation fields and 13 searchable resource families.
+- Add 32 polling events and signed call, conversation and booking webhook events.
+- Store new webhook secrets in encrypted n8n credentials; validate events and assistant filters before emitting.
+- Preserve saved version-2 action/webhook nodes; new nodes default to version 3.
+- Preserve intentionally supplied clears and omit unselected optional fields. Link action results and errors to their input items.
+- Restrict new transport to HTTPS Famulor origins, block redirects and avoid automatic write retries.
+- Refresh the official Famulor logo, current n8n development types/linter, documentation and release checks.
+
 # Changelog
 
 ## 2.0.0

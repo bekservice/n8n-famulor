@@ -1,18 +1,20 @@
 {
-	"node": "n8n-nodes-base.Famulor",
-	"nodeVersion": "2.0",
-	"codexVersion": "1.0",
-	"categories": ["Communication"],
-	"resources": {
-		"credentialDocumentation": [
-			{
-				"url": "https://app.famulor.io/"
-			}
-		],
-		"primaryDocumentation": [
-			{
-				"url": "https://www.famulor.io/"
-			}
-		]
-	}
+  "node": "n8n-nodes-base.Famulor",
+  "nodeVersion": "3.0",
+  "codexVersion": "1.0",
+  "categories": [
+    "Communication"
+  ],
+  "resources": {
+    "credentialDocumentation": [
+      {
+        "url": "https://app.famulor.io/"
+      }
+    ],
+    "primaryDocumentation": [
+      {
+        "url": "https://docs.famulor.io/automations/n8n"
+      }
+    ]
+  }
 }

@@ -6,7 +6,7 @@ import type {
 	INodePropertyOptions,
 	IWebhookFunctions,
 } from 'n8n-workflow';
-import { NodeApiError, NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError, sleep } from 'n8n-workflow';
 import { buildApiUrl, extractListItems } from './api';
 
 type FamulorRequestContext = IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions;
@@ -18,12 +18,6 @@ type FamulorRequestOptions = {
 	body?: IDataObject;
 	qs?: IDataObject;
 };
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
-}
 
 async function makeRequestWithRetry(
 	context: FamulorRequestContext,
