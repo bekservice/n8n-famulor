@@ -15,7 +15,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      # The dev SDK includes a Node 22-only native VM. These connector tests do
+      # not execute that VM; n8n supplies its own runtime. Keep the Node 20
+      # compatibility tests without running unrelated dependency build hooks.
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm run lint -- -c .eslintrc.prepublish.js
       - run: npm test
