@@ -1,0 +1,402 @@
+{
+  "name": "Send a daily Famulor call performance report to Slack",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Who is this for?\nOperations managers who want an aggregate view of Famulor call outcomes in a team Slack channel.\n\n### How it works\nEvery morning at 08:00, the workflow reads calls created during the previous calendar day. It fetches up to ten pages, validates completeness and deduplicates call IDs. A report counts completed, failed, unanswered, busy and active calls, voice minutes, negative sentiment and analyzed success. The success percentage uses only calls with a boolean success result; unscored calls are excluded from that denominator. Slack receives one plain-text report without caller names, phone numbers, transcripts or recordings. Zero-call days still produce a useful report.\n\n### Setup\n1. Add an n8n Header Auth credential: name Authorization; value Bearer followed by your Famulor workspace API key with calls:read. Select it in Read Famulor pages.\n2. Connect Slack, invite the bot to your chosen channel and enter the channel ID in Configure workflow.\n3. Set the workflow timezone to your business timezone. Set Business timezone in Configure workflow to the same timezone; its default is UTC.\n4. Run with Preview only enabled. Check the date window and report, then switch Preview only off and activate the schedule.\n\n### Customization\nAdjust the schedule or cohort window. This measures calls by creation time; later completions can change outcomes. It is not a billing report. A scan exceeding 2,000 records fails before Slack delivery. Configure n8n error notifications for unattended use. [Famulor API setup](https://docs.famulor.io/automations/n8n).",
+        "height": 790,
+        "width": 640
+      },
+      "id": "14aa1247-724c-4e44-b8c3-2a43bf1ce22f",
+      "name": "Overview and setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Read the configured window\nSelect your Header Auth credential. Requests stay on the Famulor API origin.",
+        "height": 470,
+        "width": 950,
+        "color": 7
+      },
+      "id": "d8ccf736-daef-4ac7-8c2c-7fee1fb2ac7f",
+      "name": "Read section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        704,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Validate and prepare\nIncomplete scans stop here. No full transcripts or recordings are forwarded.",
+        "height": 470,
+        "width": 530,
+        "color": 7
+      },
+      "id": "e89adef9-9cd3-4f31-b129-6ec06d2eae44",
+      "name": "Prepare section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Preview, then deliver\nPreview only starts enabled. Connect the destination before switching it off.",
+        "height": 470,
+        "width": 610,
+        "color": 7
+      },
+      "id": "8c45c45f-e9e5-405b-8b54-18070fa4b278",
+      "name": "Deliver section",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "8942a1b9-6e37-4d08-9729-cefa07905b0b",
+      "name": "Every morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        768,
+        464
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "45b5bdf8-f100-403c-b447-e2c0a02f05c2",
+      "name": "Run a manual preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        768,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "af000e7b-f7c1-41f4-9218-c0d17705775a",
+              "name": "businessTimezone",
+              "value": "UTC",
+              "type": "string"
+            },
+            {
+              "id": "7da8a855-ef1c-44b7-8b1a-9feaa47f9bd2",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "6ce8b7f5-0f91-49cb-8c20-2d99b1a76421",
+              "name": "slackChannelId",
+              "value": "REPLACE_WITH_YOUR_CHANNEL_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ecbfcd1e-6b96-4c83-83ad-72c85a545d42",
+      "name": "Configure workflow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "59ba8eff-5ef9-4dda-a69c-27d936d12e0b",
+              "name": "windowStart",
+              "value": "={{ $now.setZone($json.businessTimezone).startOf(\"day\").minus({days:1}).toUTC().toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "f4145e68-9b94-4694-ae0c-7ea92c5eaed3",
+              "name": "windowEnd",
+              "value": "={{ $now.setZone($json.businessTimezone).startOf(\"day\").toUTC().toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "396906e4-2572-4674-b38b-bb87976c9eef",
+      "name": "Build date window",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://app.famulor.io/api/v1/calls",
+        "authentication": "genericCredentialType",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "from",
+              "value": "={{ $json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.windowEnd }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ Array.isArray($response.body.data) && ($response.body.data.length < 200 || (Number.isInteger($response.body.meta?.pagination?.total) && $response.body.meta.pagination.offset + $response.body.data.length >= $response.body.meta.pagination.total)) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10,
+              "requestInterval": 300
+            }
+          },
+          "timeout": 30000
+        },
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "279f9b23-dcf8-45b4-9bf2-51d8fde6866d",
+      "name": "Read Famulor pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1392,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function flattenPages(pages) {\n  if (!pages.length || pages.length > 10) throw new Error('Expected 1–10 Famulor response pages.');\n  const total = pages[0]?.meta?.pagination?.total;\n  if (!Number.isSafeInteger(total) || total < 0) throw new Error('Missing or invalid Famulor result count.');\n  if (total > 2000) throw new Error('More than 2,000 records. Narrow the date window.');\n  const rows = [];\n  let expectedOffset = 0;\n  for (const page of pages) {\n    if (page.error || !Array.isArray(page.data)) throw new Error('Famulor returned an invalid response. Check the credential and read scope.');\n    const p = page.meta?.pagination;\n    if (!p || p.total !== total || p.limit !== 200 || p.offset !== expectedOffset || page.data.length > 200) {\n      throw new Error('Incomplete or inconsistent Famulor pagination. No destination data was written.');\n    }\n    rows.push(...page.data);\n    expectedOffset += 200;\n  }\n  if (rows.length !== total) throw new Error('The Famulor scan was incomplete or changed while paging. No destination data was written.');\n  const ids = rows.map(row => row?.id);\n  if (ids.some(value => typeof value !== 'string' || !value.trim()) || new Set(ids).size !== ids.length) {\n    throw new Error('Missing or duplicate record IDs. No destination data was written.');\n  }\n  return rows;\n}\nconst rows=flattenPages($input.all().map(i=>i.json));\n\nconst cfg=$('Build date window').first().json;\nconst start=Date.parse(cfg.windowStart),end=Date.parse(cfg.windowEnd);\nif (!Number.isFinite(start)||!Number.isFinite(end)||end<=start) throw new Error('Invalid configured date range.');\n\nconst selected=rows.filter(r=>Date.parse(r.created_at)>=start&&Date.parse(r.created_at)<end);\nconst counts={completed:0,failed:0,no_answer:0,busy:0,queued:0,ringing:0,in_progress:0,other:0};\nlet seconds=0,negative=0,scored=0,successful=0;\nfor(const r of selected){counts[Object.hasOwn(counts,r.status)?r.status:'other']++;if(Number.isFinite(r.duration_sec)&&r.duration_sec>=0)seconds+=r.duration_sec;if((r.sentiment??r.analysis?.sentiment)==='negative')negative++;if(typeof r.success==='boolean'){scored++;if(r.success)successful++;}}\nconst text=[\n  'Famulor daily call report',\n  'Creation window: '+cfg.windowStart+' to '+cfg.windowEnd+' (end excluded)',\n  'Calls: '+selected.length+' | Completed: '+counts.completed+' | Failed: '+counts.failed,\n  'No answer: '+counts.no_answer+' | Busy: '+counts.busy+' | Still active/queued: '+(counts.queued+counts.ringing+counts.in_progress),\n  'Voice minutes: '+(seconds/60).toFixed(2)+' | Negative sentiment: '+negative,\n  'Analyzed success: '+successful+'/'+scored+(scored?' ('+(successful/scored*100).toFixed(1)+'%)':' (no success analysis available)'),\n  'Calls created in this window may finish later. This is a creation-cohort report, not a completion or billing report.',\n].join('\\n');\nreturn [{json:{text,totalCalls:selected.length,counts,voiceMinutes:Number((seconds/60).toFixed(2)),negativeCalls:negative,scoredCalls:scored,successfulCalls:successful}}];"
+      },
+      "id": "7844f750-1b8b-4555-8b32-6d2a4f0cfc69",
+      "name": "Validate and prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5bce70d6-d2e2-4fe3-b770-ca9ee5e2c0a5",
+              "leftValue": "={{ $(\"Configure workflow\").first().json.previewOnly }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "19a00223-1b72-4223-a718-b964f10f36cc",
+      "name": "Preview only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2224,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "id": "a63131aa-aada-4fe3-8b82-4825852cb07c",
+      "name": "Preview prepared output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Configure workflow\").first().json.slackChannelId }}"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {
+          "link_names": false,
+          "mrkdwn": false,
+          "unfurl_links": false,
+          "unfurl_media": false
+        }
+      },
+      "id": "df2097b5-f36d-4d1e-b8db-ecc5b0a03ed4",
+      "name": "Send the report to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        656
+      ],
+      "webhookId": "68a20c37-f505-4f9c-92cd-52241eb25c1e"
+    }
+  ],
+  "connections": {
+    "Every morning": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run a manual preview": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure workflow": {
+      "main": [
+        [
+          {
+            "node": "Build date window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build date window": {
+      "main": [
+        [
+          {
+            "node": "Read Famulor pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Famulor pages": {
+      "main": [
+        [
+          {
+            "node": "Validate and prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and prepare": {
+      "main": [
+        [
+          {
+            "node": "Preview only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview only?": {
+      "main": [
+        [
+          {
+            "node": "Preview prepared output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send the report to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

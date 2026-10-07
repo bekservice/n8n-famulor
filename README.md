@@ -4,6 +4,10 @@ Official community package for the [Famulor workspace API](https://docs.famulor.
 
 Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)** · [Famulor](https://app.famulor.io) · [Integration guide](https://docs.famulor.io/automations/n8n)
 
+## Ready-to-use workflow templates
+
+The [workflow templates](templates/README.md) cover a daily booking agenda in Slack, a daily aggregate call report in Slack, and a weekly assistant inventory in Google Sheets. They use built-in n8n nodes, contain no saved credentials, and start inactive with preview mode enabled. The Creator Portal reviews these submissions separately from this repository.
+
 ## Install and connect
 
 1. Install `n8n-nodes-famulor` through **Settings → Community Nodes** in your n8n instance. See the [n8n installation guide](https://docs.n8n.io/integrations/community-nodes/installation-and-management/gui-installation/).

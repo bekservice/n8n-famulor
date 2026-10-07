@@ -1,0 +1,493 @@
+{
+  "name": "Upsert a Famulor AI assistant inventory to Google Sheets",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "nodes": [
+    {
+      "id": "eee95f17-a6a8-4dd1-a559-63f9a66782b4",
+      "name": "Run an inventory preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8de2ccb8-afc1-497d-a85d-962f8a5f838e",
+      "name": "Every Monday at 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        460
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a154fd1f-19a8-4b43-a843-e5186403c854",
+      "name": "Configure inventory",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bdff0531-3e07-4872-a250-850c7026d650",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1052df99-0e59-4d5d-a81e-77a7b7701fd6",
+      "name": "Read Famulor assistant pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/assistants",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "notesInFlow": true,
+      "notes": "Choose an HTTP Header Auth credential: Authorization = Bearer <workspace API key> (assistants:read). Verify the credential after import. Do not paste the key into this node."
+    },
+    {
+      "id": "954ec2dc-0a1a-426c-a880-5f093d809049",
+      "name": "Validate and prepare assistant rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst pages = $input.all().map(item => item.json);\nif (!pages.length) throw new Error('Famulor returned no response pages.');\nconst total = pages[0]?.meta?.pagination?.total;\nif (!Number.isSafeInteger(total) || total < 0) throw new Error('Missing or invalid Famulor pagination total.');\nif (total > 2000) throw new Error('More than 2,000 records. Narrow the workflow scope before running it.');\nlet offset = 0;\nconst records = [];\nfor (const page of pages) {\n  const meta = page?.meta?.pagination;\n  if (!Array.isArray(page?.data) || !meta || meta.total !== total || meta.offset !== offset || meta.limit !== 200) {\n    throw new Error('Incomplete or inconsistent Famulor pagination; no destination was changed.');\n  }\n  if (page.data.length > 200) throw new Error('Unexpected Famulor page size.');\n  records.push(...page.data);\n  offset += 200;\n}\nif (records.length !== total) throw new Error('The Famulor scan was incomplete or changed while paging; no destination was changed.');\nconst ids = records.map(record => record?.id);\nif (ids.some(value => typeof value !== 'string' || !value) || new Set(ids).size !== ids.length) {\n  throw new Error('Missing or duplicate record IDs; no destination was changed.');\n}\n\nconst seenAt = new Date().toISOString();\nconst rows = records.map(assistant => ({\n  'Assistant ID': assistant.id,\n  'Name': typeof assistant.name === 'string' ? assistant.name : '',\n  'Active': assistant.is_active === true ? 'Yes' : 'No',\n  'Mode': typeof assistant.mode === 'string' ? assistant.mode : '',\n  'Language': typeof assistant.stt_language === 'string' ? assistant.stt_language : '',\n  'Tags': Array.isArray(assistant.tags) ? assistant.tags.filter(x => typeof x === 'string').join(', ') : '',\n  'Created at': typeof assistant.created_at === 'string' ? assistant.created_at : '',\n  'Updated at': typeof assistant.updated_at === 'string' ? assistant.updated_at : '',\n  'Last seen': seenAt,\n}));\nreturn (rows.length ? rows : [{ _empty: true }]).map(row => ({ json: { ...row, hasRows: rows.length > 0, previewOnly: $('Configure inventory').first().json.previewOnly } }));\n"
+      }
+    },
+    {
+      "id": "8c04736e-b4d8-4dcc-a0d3-05e617ae9ede",
+      "name": "Preview only inventory?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "fd4ef319-ed91-4c65-a74b-3e666a9f3957",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "71ddb1fa-0feb-4f5a-a7d6-4ec006b170ba",
+      "name": "Preview assistant rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        180
+      ],
+      "parameters": {
+        "jsCode": "return $input.all();"
+      }
+    },
+    {
+      "id": "8d6734c7-51d1-4ece-a1f7-8dc0012d9494",
+      "name": "Has assistant rows?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ce948b7a-4143-4b0f-ae02-45e37862b0ce",
+              "leftValue": "={{ $json.hasRows }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ff46fbcd-c320-4871-ac3b-9e438d87f188",
+      "name": "Upsert assistant rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1320,
+        420
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Assistant ID": "={{ $json['Assistant ID'] }}",
+            "Name": "={{ $json['Name'] }}",
+            "Active": "={{ $json['Active'] }}",
+            "Mode": "={{ $json['Mode'] }}",
+            "Language": "={{ $json['Language'] }}",
+            "Tags": "={{ $json['Tags'] }}",
+            "Created at": "={{ $json['Created at'] }}",
+            "Updated at": "={{ $json['Updated at'] }}",
+            "Last seen": "={{ $json['Last seen'] }}"
+          },
+          "matchingColumns": [
+            "Assistant ID"
+          ],
+          "schema": [
+            {
+              "id": "Assistant ID",
+              "displayName": "Assistant ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Active",
+              "displayName": "Active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Mode",
+              "displayName": "Mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Language",
+              "displayName": "Language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tags",
+              "displayName": "Tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Created at",
+              "displayName": "Created at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Updated at",
+              "displayName": "Updated at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last seen",
+              "displayName": "Last seen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5759a464-e088-46db-ada3-5986efb9f997",
+      "name": "About this inventory",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        -360
+      ],
+      "parameters": {
+        "content": "## Who is this for?\nFamulor workspace administrators who want a lightweight weekly inventory of their AI assistants in Google Sheets.\n\n## How it works\nThe workflow lists all assistants with the workspace API, validates pagination, and keeps only the assistant ID, name, active state, mode, language, tags, creation time and update time. It upserts rows by Assistant ID, so repeated scans refresh the same row instead of creating duplicates. Prompts, voices, tool configuration, credentials and customer data are excluded.\n\n## Setup\n1. Create a Famulor workspace API key with assistants:read. Save it in an n8n HTTP Header Auth credential named Authorization with the value Bearer followed by the key. Select it in Read Famulor assistant pages.\n2. In Google Sheets, create a tab with these headers: Assistant ID, Name, Active, Mode, Language, Tags, Created at, Updated at, Last seen. Connect the spreadsheet and tab in Upsert assistant rows.\n3. Execute manually with Preview only enabled. Inspect the mapped rows, select your Google Sheets credential, switch preview off and activate the weekly schedule.\n\n## Requirements and customization\nUses built-in n8n nodes and a Google Sheets account with edit access. The sheet is an inventory snapshot of seen assistants: deleted assistants are not removed automatically. If your workspace has more than 2,000 assistants, split the scan instead of accepting an incomplete inventory. Restrict access to the destination sheet and n8n execution history. [Famulor API setup](https://docs.famulor.io/automations/n8n).",
+        "width": 690,
+        "height": 590,
+        "color": 4
+      }
+    },
+    {
+      "id": "a38e9999-5322-440b-a3fc-24c5863a3d38",
+      "name": "1. Connect Famulor",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        410,
+        520
+      ],
+      "parameters": {
+        "content": "Create an assistants:read workspace key. Use an n8n Header Auth credential, not a key pasted into the HTTP node. Verify the credential selected after import.",
+        "width": 420,
+        "height": 190
+      }
+    },
+    {
+      "id": "7a671fcb-47a5-4410-ab3f-913df794cc76",
+      "name": "2. Review the mapped fields",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        640,
+        730
+      ],
+      "parameters": {
+        "content": "The Code node selects only inventory fields. It excludes system prompts and tool details. Incomplete scans fail before any sheet write.",
+        "width": 430,
+        "height": 170
+      }
+    },
+    {
+      "id": "02b23c30-6ee5-46e6-a096-45b37e002d65",
+      "name": "3. Connect the sheet",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1110,
+        600
+      ],
+      "parameters": {
+        "content": "Create the exact headers shown in the description. Select spreadsheet, tab and credential in Google Sheets. Upsert matches on Assistant ID. Preview only starts enabled.",
+        "width": 480,
+        "height": 210
+      }
+    }
+  ],
+  "connections": {
+    "Run an inventory preview": {
+      "main": [
+        [
+          {
+            "node": "Configure inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday at 09:00": {
+      "main": [
+        [
+          {
+            "node": "Configure inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure inventory": {
+      "main": [
+        [
+          {
+            "node": "Read Famulor assistant pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Famulor assistant pages": {
+      "main": [
+        [
+          {
+            "node": "Validate and prepare assistant rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and prepare assistant rows": {
+      "main": [
+        [
+          {
+            "node": "Preview only inventory?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview only inventory?": {
+      "main": [
+        [
+          {
+            "node": "Preview assistant rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has assistant rows?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has assistant rows?": {
+      "main": [
+        [
+          {
+            "node": "Upsert assistant rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {}
+}
