@@ -1,3 +1,8 @@
+# 2.2.0
+
+- Add native Shopify widget picker reads and explicit synchronization. Widget choices use saved names; theme selection and activation remain in Shopify.
+- Preserve all 423 existing action descriptors, saved workflow parameters and credentials. Record scoped additions separately from the original catalog source.
+
 # 2.1.1
 
 - Keep HTTP status codes from n8n API errors and explain personal credit-warning restrictions for service-account keys without exposing raw transport errors.

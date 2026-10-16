@@ -9,7 +9,7 @@ export function resourceFor({ field, operation }: { field: ApiField; operation: 
 }
 
 function resourceLabel(record: Record<string, unknown>): string {
-  return String(record['name'] ?? record['number'] ?? record['phone'] ?? record['to_number'] ?? record['invitee_name'] ?? record['display_name'] ?? record['email'] ?? record['id']);
+  return String(record['name'] ?? record['shop_domain'] ?? record['number'] ?? record['phone'] ?? record['to_number'] ?? record['invitee_name'] ?? record['display_name'] ?? record['email'] ?? record['id']);
 }
 
 export async function resourceOptions({ context, resource, searchValue }: { context: ILoadOptionsFunctions; resource: Resource; searchValue?: string }) {
@@ -44,6 +44,7 @@ export async function resourceOptions({ context, resource, searchValue }: { cont
 }
 
 export const resources: Resource[] = [
+  { path: '/shopify/installations', label: 'Shopify Store', fields: ['installation_id'], unpaged: true },
   { path: '/assistants', label: 'Assistant', fields: ['assistant_id', 'fallback_assistant_id'] },
   { path: '/campaigns', label: 'Campaign', fields: ['campaign_id'] },
   { path: '/calls', label: 'Call', fields: ['call_id'], searchParam: 'q' },

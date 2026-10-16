@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe,it } from 'node:test';
 import type { IExecuteFunctions,IHttpRequestOptions,INodeParameters } from 'n8n-workflow';
 import { NodeApiError, NodeHelpers } from 'n8n-workflow';
@@ -24,11 +25,17 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
- it('registers 423 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,423);assert.equal(catalogSource.count,423);
+ it('preserves every existing descriptor when adding the Shopify picker operations',()=>{
+  const original=operations.filter(operation=>!['getShopifyWidgetPicker','synchronizeShopifyWidgetPicker'].includes(operation.id));
+  assert.equal(original.length,423);
+  assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),'408f6530bd40013deeb171dc4947f44660b213846d6d0f451bd5977b01242dd6');
+  assert.deepEqual(catalogSource.additions[0].operationIds,['getShopifyWidgetPicker','synchronizeShopifyWidgetPicker']);
+ });
+ it('registers 425 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,425);assert.equal(catalogSource.count,425);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,423);
-  assert.equal(new Set(operations.map(operation=>operation.id)).size,423);
+  assert.equal(choices.length,425);
+  assert.equal(new Set(operations.map(operation=>operation.id)).size,425);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);

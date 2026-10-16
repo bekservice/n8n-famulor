@@ -13,6 +13,18 @@ describe('workspace resource selectors',()=>{
   assert.equal(result.options[0].value,uuid);assert.equal(requests[0].method,'GET');assert.equal(new URL(requests[0].url).pathname,`/api/v1${resource.path}`);
  });
  it('provides searchable list and mapped-ID modes for call inputs',()=>{const property=operationProperties(operations.find(op=>op.id==='createCall')!).find(prop=>prop.name==='body_assistant_id')!;assert.equal(property.type,'resourceLocator');assert.equal(property.modes?.[0].typeOptions?.searchable,true);assert.equal(property.modes?.[1].name,'id');});
+ it('uses named Shopify store choices without writing or reading private customer data',async()=>{
+  const resource=resources.find(resource=>resource.path==='/shopify/installations')!;
+  const result=await resourceOptions({context:context(async request=>{
+   assert.equal(request.method,'GET');assert.equal(new URL(request.url).pathname,'/api/v1/shopify/installations');
+   return {data:[{id:uuid,shop_domain:'example.myshopify.com'}]};
+  }),resource});
+  assert.equal(result.options[0].label,`example.myshopify.com (${uuid})`);
+  for(const id of ['getShopifyWidgetPicker','synchronizeShopifyWidgetPicker']){
+   const property=operationProperties(operations.find(operation=>operation.id===id)!).find(prop=>prop.name==='path_id')!;
+   assert.equal(property.type,'resourceLocator');assert.equal(property.modes?.[0].typeOptions?.searchListMethod,'installation_id');
+  }
+ });
  it('unwraps automation detail when finding an exact UUID',async()=>{const result=await resourceOptions({context:context(async()=>({data:{automation:{id:uuid,name:'QA'},runs:[]}})),resource:resources.find(resource=>resource.path==='/automations')!,searchValue:uuid});assert.equal(result.options[0].value,uuid);});
  for(const path of ['/leads','/scheduled-callbacks'])it(`finds an older ${path} UUID without applying a text-only search filter`,async()=>{
   const queries:URLSearchParams[]=[];
