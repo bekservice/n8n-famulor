@@ -7,6 +7,7 @@ import { Famulor } from '../nodes/Famulor/Famulor.node';
 import { FamulorTrigger } from '../nodes/Famulor/FamulorTrigger.node';
 import { FamulorV3 } from '../nodes/Famulor/v3/FamulorV3.node';
 import { operations,catalogSource } from '../nodes/Famulor/v3/generated/catalog';
+import { operationProperties } from '../nodes/Famulor/v3/properties';
 import { famulorV3Api,safeBaseUrl } from '../nodes/Famulor/v3/client';
 import type { ApiField } from '../nodes/Famulor/v3/types';
 
@@ -26,7 +27,7 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 
 describe('native API actions',()=>{
  it('retains all published v2.1.1 action routes and saved input field names and types',()=>{
-  const baseline=JSON.parse(readFileSync('test/fixtures/v2.1.1-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string}[]}[];
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.1.1-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string;required:boolean}[]}[];
   assert.equal(baseline.length,423);
   for(const saved of baseline){
    const current=operations.find(operation=>operation.id===saved.id);
@@ -36,6 +37,10 @@ describe('native API actions',()=>{
    for(const field of saved.fields){
     const currentField=fields.find(candidate=>candidate.name===field.name&&candidate.in===field.in);
     assert.ok(currentField,`${saved.id}: missing ${field.name}`);
+    if(field.required){
+     const name=`${field.in??'body'}_${field.name}`;
+     assert.ok(operationProperties(current).some(prop=>prop.name===name),`${saved.id}: lost top-level ${name}`);
+    }
     const migratedHistoryFilter=saved.id==='listHistory'&&field.in==='query'&&['type','direction','status','assistant_id','campaign_id'].includes(field.name);
     if(migratedHistoryFilter){
      assert.equal(field.type,'string');assert.equal(currentField.type,'array');
@@ -100,6 +105,16 @@ describe('native API actions',()=>{
  it('does not accept legacy text as an array request body',()=>{
   const operation:Parameters<typeof famulorV3Api.buildRequest>[0]['operation']={id:'fixture',method:'POST',path:'/test',summary:'Test',description:'Test',tag:'Test',parameters:[],body:{required:true,fields:[{name:'items',type:'array',required:true}]}};
   assert.throws(()=>famulorV3Api.buildRequest({operation,values:{body_items:'a,b'}}),/valid array/);
+ });
+ it('preserves saved custom-domain address inputs and allows new hosted addresses',async()=>{
+  const operation=operations.find(operation=>operation.id==='createEmailAddress')!;
+  for(const savedDomain of [uuid,undefined]){
+   const saved={resource:operation.tag,operation:operation.id,body_local_part:'support',...(savedDomain?{body_domain_id:savedDomain}:{optionalFields:{body_hosted:true}})};
+   const defaults=NodeHelpers.getNodeParameters(node.description.properties,saved,true,false,{typeVersion:3},node.description)!;
+   const requests:IHttpRequestOptions[]=[];
+   await node.execute.call(context(defaults,async req=>{requests.push(req);return {statusCode:200,body:{data:{id:uuid}}};}));
+   assert.deepEqual(requests[0].body,{local_part:'support',...(savedDomain?{domain_id:savedDomain}:{hosted:true})});
+  }
  });
  it('does not change phone-number call permissions when only the label is updated',async()=>{
   const op=operations.find(op=>op.id==='updatePhoneNumber')!;

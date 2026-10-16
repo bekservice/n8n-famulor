@@ -26,12 +26,18 @@ function fieldProperty(field: ApiField, name: string, operation: ApiOperation): 
   return prop;
 }
 
+// This input was required in 2.1.1. Keep its saved top-level parameter even
+// though the API now also allows a hosted address without a custom domain.
+export function isLegacyTopLevelField(operation: ApiOperation, name: string): boolean {
+  return operation.id === 'createEmailAddress' && name === 'body_domain_id';
+}
+
 export function operationProperties(operation: ApiOperation): INodeProperties[] {
   const fields = [...operation.parameters.map(field => ({ field, name: `${field.in}_${field.name}` })), ...(operation.body?.fields ?? []).map(field => ({ field, name: `body_${field.name}` }))];
   const show = { resource: [operation.tag], operation: [operation.id] };
-  const required = fields.filter(({field}) => field.required).map(({field,name}) => ({ ...fieldProperty(field,name,operation), displayOptions: {show} }));
+  const required = fields.filter(({field,name}) => field.required || isLegacyTopLevelField(operation,name)).map(({field,name}) => ({ ...fieldProperty(field,name,operation), displayOptions: {show} }));
   if (['getCreditNotificationPreferences','updateCreditNotificationPreferences'].includes(operation.id)) required.unshift({displayName:'Personal low-credit warnings require a user-owned credential. Service-account API keys cannot read or change them. You can manage personal warnings in Famulor Settings.',name:'personalCredentialNotice',type:'notice',default:'',displayOptions:{show}});
-  const optional = fields.filter(({field}) => !field.required).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));
+  const optional = fields.filter(({field,name}) => !field.required && !isLegacyTopLevelField(operation,name)).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));
   if (operation.body && !operation.body.fields && !operation.body.required) optional.push({displayName:'Request Body',name:'body',type:'json',default:'{}',description:operation.body.description || 'Optional JSON request body'});
   if (optional.length) required.push({ displayName: 'Optional Fields', name: 'optionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: {show}, options: optional });
   if (operation.body?.fields) required.push({ displayName: 'Additional Body Fields', name: 'body_extra', type: 'json', default: '{}', displayOptions: {show}, description: 'Additional documented fields as JSON. Named fields take precedence. Use explicit null, empty arrays or empty strings to clear supported fields' });

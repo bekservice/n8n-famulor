@@ -2,7 +2,7 @@ import { NodeConnectionTypes } from '../connections';
 import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { operations } from './generated/catalog';
-import { nativeProperties, operationProperties } from './properties';
+import { isLegacyTopLevelField, nativeProperties, operationProperties } from './properties';
 import { famulorV3Api } from './client';
 import { resourceSearchMethods } from './resources';
 
@@ -28,7 +28,11 @@ export class FamulorV3 implements INodeType {
         const optional = this.getNodeParameter('optionalFields',index,{}) as Record<string,unknown>;
         const values: Record<string,unknown> = {...optional};
         for (const property of operationProperties(operation)) {
-          if (property.name !== 'optionalFields') values[property.name] = this.getNodeParameter(property.name,index,property.default);
+          if (property.name !== 'optionalFields') {
+            const value = this.getNodeParameter(property.name,index,property.default);
+            if (isLegacyTopLevelField(operation,property.name) && value === '') continue;
+            values[property.name] = value;
+          }
         }
         const request = famulorV3Api.buildRequest({operation,values});
         const response = await famulorV3Api.request(this,{...request,method: operation.method as 'GET'|'POST'|'PATCH'|'PUT'|'DELETE',binary:operation.binary});
