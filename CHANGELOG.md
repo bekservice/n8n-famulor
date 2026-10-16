@@ -1,3 +1,12 @@
+# 2.2.0
+
+- Refresh the native action catalog to all 474 current public API operations, adding 51 actions for private AI Avatars, Shopify, assistant fallback voices, saved History views, email setup and workspace management.
+- Update AgentMail inbox selection, assistant options and current request/response descriptions.
+- Custom email domain connections require the displayed one-time price in `expected_credits`; existing connections remain unchanged. Private avatar creation also requires consent and the current price after the photo has been uploaded.
+- Preserve saved custom-domain email address selections when the domain field becomes optional.
+- Preserve saved History text filters and resource locators while supporting the current array filters.
+- Preserve existing operation IDs, saved version-2 nodes, all 32 polling events and five signed webhook events. No workflows are activated by installing this update.
+
 # 2.1.1
 
 - Keep HTTP status codes from n8n API errors and explain personal credit-warning restrictions for service-account keys without exposing raw transport errors.

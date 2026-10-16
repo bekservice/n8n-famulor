@@ -1,6 +1,6 @@
 # Famulor for n8n
 
-Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **423 native actions**, **32 polling events** and **five signed webhook events**.
+Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **474 native actions**, **32 polling events** and **five signed webhook events**.
 
 Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)** · [Famulor](https://app.famulor.io) · [Integration guide](https://docs.famulor.io/automations/n8n)
 
@@ -45,6 +45,14 @@ Famulor enforces workspace scopes, permissions, plan entitlements, feature acces
 
 Example read-only action: **Account → Get current credential** (`getMe`). Example outbound call: **Calls → Start an outbound call**, select an assistant and provide `to_number` in E.164 format. Create/sending/purchase operations perform real writes when you execute them.
 
+## Private AI Avatars
+
+Use **Avatars → Check custom avatar creation** to read the current price and image limits. A user-owned workspace API key is required to create or delete avatars; service-account keys cannot manage them.
+
+Prepare the photo with **Prepare custom avatar upload**, then upload the photo to the returned signed `upload_url` using an n8n HTTP Request node: PUT, multipart/form-data with an unnamed binary file field and `cacheControl` set to `0`, header `x-upsert: false`, and **no Famulor credentials**. Let n8n generate the multipart Content-Type boundary; do not set an image Content-Type on the whole request. Submit the same prepared ID with explicit consent and the returned `creation_credits` as `expected_credits`. The image defines the appearance; the style field does not transform it. Creation uses a one-time credit charge and may use a saved automatic top-up rule. Read the same avatar ID after an uncertain response instead of preparing another paid creation. Only a ready avatar can be assigned to a widget; ongoing avatar usage is billed separately.
+
+Private avatars stay in their workspace. Photo upload or webcam capture is also available in the Famulor widget editor.
+
 ## Polling events
 
 Add **Famulor Polling Trigger**, select an event and the polling schedule. Campaign-lead events also require the campaign UUID.
@@ -84,6 +92,10 @@ This release is additive at the package level. Saved workflows using **Famulor v
 
 To upgrade an existing action node, select version 3, choose the native resource/operation, and map the new fields. To upgrade a webhook node, select its event and move the old node's secret to **Famulor Webhook API** credentials. Test the workflow before activating it. Do not remove the old credentials until all dependent workflows have been updated.
 
+## Shopify theme widget choices
+
+Use **Shopify → Read Shopify widget choices** with a linked store ID to read named choices and synchronization status. Public name publication is disabled by default. **Shopify → Synchronize Shopify widget choices** explicitly enables publication and publishes current eligible names as public Shopify storefront data. No extra Shopify permission request is required. Subsequent background updates preserve this opt-in. To disable publication, use the Shopify capabilities configuration through the HTTP/API workflow documented in the [Famulor Shopify app guide](https://docs.famulor.io/automations/shopify-app). Both need workspace owner/admin access and Assistants: Read; reading also needs Integrations: Read, synchronization Integrations: Write. Select the named widget and save the theme in Shopify. The store dropdown also requires Integrations: Read; use By ID when the credential only has write access to integrations. These operations do not activate a theme or modify a customer's order.
+
 ## Development and release
 
 ```sh
@@ -97,6 +109,14 @@ npm pack --dry-run
 
 The catalog is pinned to the [public specification](https://docs.famulor.io/api-reference/openapi.json), with its SHA-256 and operation count stored in generated metadata. To refresh it, run the same generator without `--check` and review the resulting inputs and endpoint changes.
 
-Tests execute all 423 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
+For a scoped addition that preserves every previously released descriptor, use:
+
+```sh
+node scripts/generate-catalog.mjs path/to/openapi.json --add-operations newOperationId --check
+```
+
+Replace `newOperationId` with an operation not already in this catalog, and omit `--check` to add it. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported.
+
+Tests execute all 474 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
 
 Release by pushing the reviewed commit and a matching version tag. The existing **Publish** GitHub Actions workflow installs the lockfile, builds, lints, tests, and publishes the package with npm provenance. npm publication and n8n Creator Portal verification are separate outcomes.
