@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe,it } from 'node:test';
 import type { IExecuteFunctions,IHttpRequestOptions,INodeParameters } from 'n8n-workflow';
 import { NodeApiError, NodeHelpers } from 'n8n-workflow';
@@ -25,17 +25,30 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
- it('preserves every existing descriptor when adding the Shopify picker operations',()=>{
-  const original=operations.filter(operation=>!['getShopifyWidgetPicker','synchronizeShopifyWidgetPicker'].includes(operation.id));
-  assert.equal(original.length,423);
-  assert.equal(createHash('sha256').update(JSON.stringify(original)).digest('hex'),'408f6530bd40013deeb171dc4947f44660b213846d6d0f451bd5977b01242dd6');
-  assert.deepEqual(catalogSource.additions[0].operationIds,['getShopifyWidgetPicker','synchronizeShopifyWidgetPicker']);
+ it('retains all published v2.1.1 action routes and saved input field names and types',()=>{
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.1.1-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string}[]}[];
+  assert.equal(baseline.length,423);
+  for(const saved of baseline){
+   const current=operations.find(operation=>operation.id===saved.id);
+   assert.ok(current,`Missing saved operation ${saved.id}`);
+   for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],`${saved.id}: ${key}`);
+   const fields=[...current.parameters,...current.body?.fields??[]];
+   for(const field of saved.fields){
+    const currentField=fields.find(candidate=>candidate.name===field.name&&candidate.in===field.in);
+    assert.ok(currentField,`${saved.id}: missing ${field.name}`);
+    const migratedHistoryFilter=saved.id==='listHistory'&&field.in==='query'&&['type','direction','status','assistant_id','campaign_id'].includes(field.name);
+    if(migratedHistoryFilter){
+     assert.equal(field.type,'string');assert.equal(currentField.type,'array');
+     assert.equal(currentField.style,'form');assert.equal(currentField.explode,false);
+    }else assert.equal(currentField.type,field.type,`${saved.id}: type for ${field.name}`);
+   }
+  }
  });
- it('registers 425 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,425);assert.equal(catalogSource.count,425);
+ it('registers 474 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,474);assert.equal(catalogSource.count,474);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,425);
-  assert.equal(new Set(operations.map(operation=>operation.id)).size,425);
+  assert.equal(choices.length,474);
+  assert.equal(new Set(operations.map(operation=>operation.id)).size,474);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
@@ -70,6 +83,23 @@ describe('native API actions',()=>{
   }
   assert.deepEqual(result[0][0].pairedItem,{item:0});
   if(operation.binary)assert.equal(result[0][0].binary?.data.mimeType,operation.binaryContentType);else assert.equal(result[0][0].json.id,'result');
+ });
+ it('executes saved History text filters and resource locators as well as current arrays',async()=>{
+  const operation=operations.find(operation=>operation.id==='listHistory')!;
+  for(const optionalFields of [
+   {query_type:'call,avatar',query_direction:'inbound',query_status:'completed,failed',query_assistant_id:{mode:'id',value:uuid},query_campaign_id:uuid},
+   {query_type:['call','avatar'],query_direction:['inbound'],query_status:'["completed","failed"]',query_assistant_id:[uuid],query_campaign_id:[uuid]},
+  ]){
+   const defaults=NodeHelpers.getNodeParameters(node.description.properties,{resource:operation.tag,operation:operation.id,optionalFields} as INodeParameters,true,false,{typeVersion:3},node.description)!;
+   const requests:IHttpRequestOptions[]=[];
+   await node.execute.call(context(defaults,async req=>{requests.push(req);return {statusCode:200,body:{data:[]}};}));
+   const query=Object.fromEntries(new URL(requests[0].url).searchParams);
+   assert.deepEqual(query,{type:'call,avatar',direction:'inbound',status:'completed,failed',assistant_id:uuid,campaign_id:uuid});
+  }
+ });
+ it('does not accept legacy text as an array request body',()=>{
+  const operation:Parameters<typeof famulorV3Api.buildRequest>[0]['operation']={id:'fixture',method:'POST',path:'/test',summary:'Test',description:'Test',tag:'Test',parameters:[],body:{required:true,fields:[{name:'items',type:'array',required:true}]}};
+  assert.throws(()=>famulorV3Api.buildRequest({operation,values:{body_items:'a,b'}}),/valid array/);
  });
  it('does not change phone-number call permissions when only the label is updated',async()=>{
   const op=operations.find(op=>op.id==='updatePhoneNumber')!;

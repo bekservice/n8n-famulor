@@ -1,6 +1,6 @@
 # Famulor for n8n
 
-Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **425 native actions**, **32 polling events** and **five signed webhook events**.
+Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **474 native actions**, **32 polling events** and **five signed webhook events**.
 
 Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)** · [Famulor](https://app.famulor.io) · [Integration guide](https://docs.famulor.io/automations/n8n)
 
@@ -44,6 +44,14 @@ Famulor enforces workspace scopes, permissions, plan entitlements, feature acces
 - Requests stay within the configured HTTPS Famulor origin and `/api/v1`. Redirects are not followed, credentials are not echoed in errors, and action output is linked to its input item.
 
 Example read-only action: **Account → Get current credential** (`getMe`). Example outbound call: **Calls → Start an outbound call**, select an assistant and provide `to_number` in E.164 format. Create/sending/purchase operations perform real writes when you execute them.
+
+## Private AI Avatars
+
+Use **Avatars → Check custom avatar creation** to read the current price and image limits. A user-owned workspace API key is required to create or delete avatars; service-account keys cannot manage them.
+
+Prepare the photo with **Prepare custom avatar photo**, then upload its bytes to the returned signed `upload_url` using an n8n HTTP Request node with PUT, the image Content-Type and **no Famulor credentials**. Submit the same prepared ID with explicit consent and the returned `creation_credits` as `expected_credits`. The image defines the appearance; the style field does not transform it. Creation uses a one-time credit charge and may use a saved automatic top-up rule. Read the same avatar ID after an uncertain response instead of preparing another paid creation. Only a ready avatar can be assigned to a widget; ongoing avatar usage is billed separately.
+
+Private avatars stay in their workspace. Photo upload or webcam capture is also available in the Famulor widget editor.
 
 ## Polling events
 
@@ -104,11 +112,11 @@ The catalog is pinned to the [public specification](https://docs.famulor.io/api-
 For a scoped addition that preserves every previously released descriptor, use:
 
 ```sh
-node scripts/generate-catalog.mjs path/to/openapi.json --add-operations getShopifyWidgetPicker,synchronizeShopifyWidgetPicker --check
+node scripts/generate-catalog.mjs path/to/openapi.json --add-operations newOperationId --check
 ```
 
-Omit `--check` to add the operations. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported.
+Replace `newOperationId` with an operation not already in this catalog, and omit `--check` to add it. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported.
 
-Tests execute all 425 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
+Tests execute all 474 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
 
 Release by pushing the reviewed commit and a matching version tag. The existing **Publish** GitHub Actions workflow installs the lockfile, builds, lints, tests, and publishes the package with npm provenance. npm publication and n8n Creator Portal verification are separate outcomes.

@@ -10,12 +10,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalize({ field, value }: { field: ApiField; value: unknown }): unknown {
-  if (field.type === 'string' && isRecord(value) && 'mode' in value && 'value' in value) value=value.value;
+  const csvQuery = field.in === 'query' && field.type === 'array' && field.style === 'form' && field.explode === false;
+  // Earlier catalogs represented these query lists as text or a saved resource locator.
+  if ((field.type === 'string' || csvQuery) && isRecord(value) && 'mode' in value && 'value' in value) value=value.value;
   if (value === undefined || (value === '' && (field.required || field.type !== 'string'))) {
     if (field.required) throw new Error(`${field.name} is required.`);
     return undefined;
   }
   if (value === null) { if (field.required) throw new Error(`${field.name} is required.`); return value; }
+  if (csvQuery && typeof value === 'string' && !value.trimStart().startsWith('[')) {
+    value = value.split(',').map(item => item.trim()).filter(Boolean);
+  }
   if (typeof value === 'string' && ['json', 'object', 'array', 'boolean', 'integer', 'number'].includes(field.type)) {
     try { value = JSON.parse(value); } catch { throw new Error(`${field.name} must be valid ${field.type}.`); }
   }
