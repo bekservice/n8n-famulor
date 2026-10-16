@@ -86,7 +86,7 @@ To upgrade an existing action node, select version 3, choose the native resource
 
 ## Shopify theme widget choices
 
-Use **Shopify → Read Shopify widget choices** with a linked store ID to read named choices and synchronization status. Use **Shopify → Synchronize Shopify widget choices** to publish current eligible widget names to Shopify theme settings. Both need workspace owner/admin access and Assistants: Read; reading also needs Integrations: Read, synchronization Integrations: Write. Select the named widget and save the theme in Shopify. The store dropdown also requires Integrations: Read; use By ID when the credential only has write access to integrations. These operations do not activate a theme or modify a customer's order.
+Use **Shopify → Read Shopify widget choices** with a linked store ID to read named choices and synchronization status. Public name publication is disabled by default. **Shopify → Synchronize Shopify widget choices** explicitly enables publication and publishes current eligible names as public Shopify storefront data. No extra Shopify permission request is required. Subsequent background updates preserve this opt-in. To disable publication, use the Shopify capabilities configuration through the HTTP/API workflow documented in the [Famulor Shopify app guide](https://docs.famulor.io/automations/shopify-app). Both need workspace owner/admin access and Assistants: Read; reading also needs Integrations: Read, synchronization Integrations: Write. Select the named widget and save the theme in Shopify. The store dropdown also requires Integrations: Read; use By ID when the credential only has write access to integrations. These operations do not activate a theme or modify a customer's order.
 
 ## Development and release
 

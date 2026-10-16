@@ -1,6 +1,6 @@
 # 2.2.0
 
-- Add native Shopify widget picker reads and explicit synchronization. Widget choices use saved names; theme selection and activation remain in Shopify.
+- Add native Shopify widget picker reads and explicit opt-in synchronization. Public name publication defaults off; synchronization enables it without additional Shopify permissions. Theme selection and activation remain in Shopify.
 - Preserve all 423 existing action descriptors, saved workflow parameters and credentials. Record scoped additions separately from the original catalog source.
 
 # 2.1.1
