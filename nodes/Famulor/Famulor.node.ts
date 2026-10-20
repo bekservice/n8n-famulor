@@ -5,7 +5,7 @@ import { FamulorV3 } from './v3/FamulorV3.node';
 
 export class Famulor extends VersionedNodeType {
   constructor() {
-    const description: INodeTypeBaseDescription = { displayName:'Famulor', name:'famulor', icon:'file:famulor.svg', group:['transform'], description:'Automate your Famulor workspace', defaultVersion:3 };
+    const description: INodeTypeBaseDescription = { displayName:'Famulor', name:'famulor', icon:{light:'file:famulor.svg',dark:'file:famulor-dark.svg'}, group:['transform'], description:'Automate your Famulor workspace', defaultVersion:3 };
     super({2:new FamulorV2(),3:new FamulorV3()},description);
   }
 }

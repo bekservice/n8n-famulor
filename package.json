@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-famulor",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Native n8n actions and signed/polling triggers for the Famulor workspace API",
   "keywords": [
     "n8n-community-node-package",
@@ -26,14 +26,15 @@
   },
   "main": "index.js",
   "scripts": {
-    "build": "npx rimraf dist && tsc && gulp build:icons",
-    "dev": "tsc --watch",
+    "build": "npx rimraf dist && node node_modules/typescript/bin/tsc && gulp build:icons",
+    "dev": "node node_modules/typescript/bin/tsc --watch",
     "format": "prettier nodes credentials --write",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
-    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json && npm test",
-    "check:catalog": "node scripts/generate-catalog.mjs"
+    "lint": "n8n-node lint",
+    "lintfix": "n8n-node lint --fix",
+    "test": "node node_modules/typescript/bin/tsc -p tsconfig.test.json && node --test dist-test/test/*.test.cjs",
+    "prepublishOnly": "npm run build && npm run lint && npm test && npm run scan",
+    "check:catalog": "node scripts/generate-catalog.mjs",
+    "scan": "node scripts/scan-local.mjs"
   },
   "files": [
     "dist",
@@ -49,12 +50,15 @@
       "dist/nodes/Famulor/Famulor.node.js",
       "dist/nodes/Famulor/FamulorTrigger.node.js",
       "dist/nodes/Famulor/FamulorPollingTrigger.node.js"
-    ]
+    ],
+    "strict": true
   },
   "devDependencies": {
+    "@n8n/node-cli": "0.53.2",
+    "@n8n/scan-community-package": "0.40.0",
     "@types/node": "^20.17.0",
     "@typescript-eslint/parser": "~8.32.0",
-    "eslint": "^8.57.0",
+    "eslint": "9.29.0",
     "eslint-plugin-n8n-nodes-base": "^2.0.0",
     "gulp": "^5.0.0",
     "n8n-workflow": "^2.16.0",

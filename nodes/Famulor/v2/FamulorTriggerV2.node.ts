@@ -1,8 +1,9 @@
+import { webhookExists, createWebhook, deleteWebhook } from '../webhookLifecycle';
 import { NodeConnectionTypes } from '../connections';
 import type {
 	INodeType,
 	INodeTypeDescription,
-	IWebhookFunctions,
+	IHookFunctions, IWebhookFunctions,
 	IWebhookResponseData,
 } from 'n8n-workflow';
 import { extractAssistantId, extractWebhookEvent } from '../api';
@@ -21,7 +22,7 @@ export class FamulorTriggerV2 implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Famulor Trigger',
 		name: 'famulorTrigger',
-		icon: 'file:famulor.svg',
+		icon: {light:'file:famulor.svg',dark:'file:famulor-dark.svg'},
 		group: ['trigger'],
 		version: 2,
 		subtitle: 'Call completed (signed workspace webhook)',
@@ -47,6 +48,7 @@ export class FamulorTriggerV2 implements INodeType {
 			},
 		],
 		properties: [
+{displayName:'Registration',name:'registrationMode',type:'options',noDataExpression:true,default:'manual',options:[{name:'Automatic Subscription',value:'automatic',description:'Create and remove a dedicated signed workspace subscription'},{name:'Existing Manual Destination',value:'manual',description:'Keep an existing manually configured destination unchanged'}]},
 			{
 				displayName:
 					'Create a workspace webhook in Famulor Settings → Webhooks for event <code>call.completed</code>. Paste this node Production URL. Verify with the workspace webhook secret (header X-Famulor-Signature). Unsigned assistant webhook_url is not the n8n trigger contract.',
@@ -85,6 +87,12 @@ export class FamulorTriggerV2 implements INodeType {
 			getAssistants: loadAssistants,
 		},
 	};
+
+  webhookMethods = {default: {
+    async checkExists(this:IHookFunctions) { return webhookExists(this,2); },
+    async create(this:IHookFunctions) { return createWebhook(this,2); },
+    async delete(this:IHookFunctions) { return deleteWebhook(this,2); },
+  }};
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
 		const webhookSecret = this.getNodeParameter('webhookSecret') as string;

@@ -49,15 +49,33 @@ describe('native API actions',()=>{
    }
   }
  });
- it('registers 474 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,474);assert.equal(catalogSource.count,474);
+ it('preserves every saved 2.2.0 route and input while adding compatible operations',()=>{
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.2.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string;required:boolean}[]}[];
+  assert.equal(baseline.length,474);
+  for(const saved of baseline){
+   const current=operations.find(op=>op.id===saved.id)!;assert.ok(current,saved.id);
+   for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],saved.id+': '+key);
+   const fields=[...current.parameters,...current.body?.fields??[]];
+   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assert.equal(field.required,previous.required);}
+   for(const field of fields.filter(f=>f.required))assert.ok(saved.fields.some(f=>f.name===field.name&&f.in===field.in&&f.required),saved.id+': new required field '+field.name);
+  }
+ });
+ for(const id of ['getCallBrowserRecording','getMessagingBrowserRecording'])it(id+': returns exact video bytes as a file',async()=>{
+  const operation=operations.find(op=>op.id===id)!;
+  const bytes=Buffer.from([0,255,34,128,12]);let received:Buffer|undefined;
+  const ctx=context({resource:operation.tag,operation:operation.id,path_id:uuid,path_recordingId:uuid},async req=>{assert.equal(req.encoding,'arraybuffer');assert.equal(req.json,false);return {statusCode:200,body:bytes,headers:{'Content-Type':'VIDEO/WEBM; codecs=vp9'}};});
+  ctx.helpers.prepareBinaryData=async(body)=>{received=body as Buffer;return {data:'fixture',mimeType:'video/webm',fileName:'file.webm'};};
+  const result=await node.execute.call(ctx);assert.deepEqual(received,bytes);assert.equal(result[0][0].binary?.data.mimeType,'video/webm');
+ });
+ it('registers 485 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,485);assert.equal(catalogSource.count,485);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,474);
-  assert.equal(new Set(operations.map(operation=>operation.id)).size,474);
+  assert.equal(choices.length,485);
+  assert.equal(new Set(operations.map(operation=>operation.id)).size,485);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
-  assert.equal(new FamulorTrigger().getNodeType().description.version,3);
+  assert.equal(new FamulorTrigger().getNodeType().description.version,4);
  });
  it('executes saved v2 call parameters with their original request and output shape',async()=>{
   const legacy=new Famulor().getNodeType(2);
@@ -104,7 +122,7 @@ describe('native API actions',()=>{
  });
  it('does not accept legacy text as an array request body',()=>{
   const operation:Parameters<typeof famulorV3Api.buildRequest>[0]['operation']={id:'fixture',method:'POST',path:'/test',summary:'Test',description:'Test',tag:'Test',parameters:[],body:{required:true,fields:[{name:'items',type:'array',required:true}]}};
-  assert.throws(()=>famulorV3Api.buildRequest({operation,values:{body_items:'a,b'}}),/valid array/);
+  assert.throws(()=>famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{body_items:'a,b'}}),/valid array/);
  });
  it('preserves saved custom-domain address inputs and allows new hosted addresses',async()=>{
   const operation=operations.find(operation=>operation.id==='createEmailAddress')!;
@@ -124,13 +142,13 @@ describe('native API actions',()=>{
  });
  it('preserves intentional false, zero and explicit clearing values',()=>{
   const operation={id:'fixture',method:'PATCH',path:'/assistants/{id}',summary:'Fixture',description:'Fixture',tag:'Fixture',parameters:[{name:'id',in:'path',required:true,type:'string'}],body:{required:true,fields:[{name:'enabled',required:false,type:'boolean'},{name:'limit',required:false,type:'number'},{name:'tags',required:false,type:'array'},{name:'name',required:false,type:'string'},{name:'greeting',required:false,type:'string'}]}};
-  assert.deepEqual(famulorV3Api.buildRequest({operation,values:{path_id:uuid,body_enabled:false,body_limit:0,body_tags:[],body_name:'',body_greeting:null}}).body,{enabled:false,limit:0,tags:[],name:'',greeting:null});
+  assert.deepEqual(famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{path_id:uuid,body_enabled:false,body_limit:0,body_tags:[],body_name:'',body_greeting:null}}).body,{enabled:false,limit:0,tags:[],name:'',greeting:null});
  });
  it('preserves JSON objects with mode and value keys instead of unwrapping them as locators',()=>{
   const operation=operations.find(op=>op.id==='createCall')!;
   const variables={mode:'test',value:'text'};
-  assert.deepEqual((famulorV3Api.buildRequest({operation,values:{body_assistant_id:uuid,body_to_number:'+4915123456789',body_variables:variables}}).body as Record<string,unknown>).variables,variables);
-  assert.deepEqual((famulorV3Api.buildRequest({operation,values:{body_assistant_id:{mode:'id',value:uuid},body_to_number:'+4915123456789',body_variables:JSON.stringify(variables)}}).body as Record<string,unknown>).variables,variables);
+  assert.deepEqual((famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{body_assistant_id:uuid,body_to_number:'+4915123456789',body_variables:variables}}).body as Record<string,unknown>).variables,variables);
+  assert.deepEqual((famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{body_assistant_id:{mode:'id',value:uuid},body_to_number:'+4915123456789',body_variables:JSON.stringify(variables)}}).body as Record<string,unknown>).variables,variables);
  });
  it('pairs every output and continue-on-fail error to its input item',async()=>{
   const op=operations.find(op=>op.id==='getMe')!;
@@ -171,8 +189,8 @@ describe('native API actions',()=>{
   assert.equal(result[0][0].binary?.data.mimeType,'audio/ogg');assert.equal(result[0][0].binary?.data.fileName,'audio.ogg');
  });
  it('rejects unsafe origins and path traversal before transmitting credentials',()=>{
-  for(const origin of ['http://app.famulor.io','https://user:password@app.famulor.io','https://app.famulor.io:444','https://app.famulor.io/other'])assert.throws(()=>safeBaseUrl(origin));
+  for(const origin of ['http://app.famulor.io','https://user:password@app.famulor.io','https://app.famulor.io:444','https://app.famulor.io/other'])assert.throws(()=>safeBaseUrl(context({},async()=>({})).getNode(),origin));
   const operation=operations.find(op=>op.id==='getCall')!;
-  for(const path of ['..','../me','%2e%2e','x/y'])assert.throws(()=>famulorV3Api.buildRequest({operation,values:{path_id:path}}));
+  for(const path of ['..','../me','%2e%2e','x/y'])assert.throws(()=>famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{path_id:path}}));
  });
 });

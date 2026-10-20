@@ -28,7 +28,7 @@ export class FamulorV2 implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Famulor',
 		name: 'famulor',
-		icon: 'file:famulor.svg',
+		icon: {light:'file:famulor.svg',dark:'file:famulor-dark.svg'},
 		group: ['transform'],
 		version: 2,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -659,7 +659,7 @@ async function executeCall(
 				assistantId,
 				toNumber,
 				phoneNumberId: additionalFields.phoneNumberId || undefined,
-				lead: parseLead(additionalFields.lead),
+				lead: parseLead(this.getNode(), additionalFields.lead),
 			});
 
 			const response = await famulorApiRequest.call(this, 'POST', '/calls', body as IDataObject);
@@ -688,7 +688,7 @@ async function executeCall(
 				qs[key === 'pageLimit' ? 'limit' : key] = value;
 			}
 			const response = await famulorApiRequest.call(this, 'GET', '/calls', {}, qs);
-			const calls = extractListItems(response, ['data', 'items', 'calls']);
+			const calls = extractListItems(this.getNode(), response, ['data', 'items', 'calls']);
 			for (const call of calls) {
 				returnData.push({
 					json: asJson(unwrapResource(call)),
@@ -752,7 +752,7 @@ async function executeAssistant(
 				qs.limit = 200;
 			}
 			const response = await famulorApiRequest.call(this, 'GET', '/assistants', {}, qs);
-			const assistants = extractListItems(response, ['data', 'items', 'assistants']);
+			const assistants = extractListItems(this.getNode(), response, ['data', 'items', 'assistants']);
 			for (const assistant of assistants) {
 				returnData.push({
 					json: asJson(unwrapResource(assistant)),
@@ -805,7 +805,7 @@ async function executeCampaign(
 				qs[key === 'pageLimit' ? 'limit' : key] = value;
 			}
 			const response = await famulorApiRequest.call(this, 'GET', '/campaigns', {}, qs);
-			const campaigns = extractListItems(response, ['data', 'items', 'campaigns']);
+			const campaigns = extractListItems(this.getNode(), response, ['data', 'items', 'campaigns']);
 			for (const campaign of campaigns) {
 				returnData.push({
 					json: asJson(unwrapResource(campaign)),

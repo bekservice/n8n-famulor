@@ -5,6 +5,7 @@ import type {
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	IWebhookFunctions,
+	JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError, NodeOperationError, sleep } from 'n8n-workflow';
 import { buildApiUrl, extractListItems } from './api';
@@ -48,11 +49,11 @@ async function makeRequestWithRetry(
 				continue;
 			}
 
-			throw error;
+			throw new NodeApiError(context.getNode(), error as JsonObject);
 		}
 	}
 
-	throw new Error('Famulor request failed after retries');
+	throw new NodeOperationError(context.getNode(), 'Famulor request failed after retries');
 }
 
 export async function famulorApiRequest(
@@ -65,7 +66,7 @@ export async function famulorApiRequest(
 	const credentials = await this.getCredentials('famulorApi');
 	const options: FamulorRequestOptions = {
 		method,
-		url: buildApiUrl(credentials.baseUrl as string | undefined, endpoint),
+		url: buildApiUrl(this.getNode(), credentials.baseUrl as string | undefined, endpoint),
 		json: true,
 	};
 
@@ -88,7 +89,7 @@ function asNamedRecords(items: unknown[]): Array<Record<string, unknown>> {
 export async function loadAssistants(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 	try {
 		const response = await famulorApiRequest.call(this, 'GET', '/assistants', {}, { limit: 200 });
-		const assistants = asNamedRecords(extractListItems(response, ['data', 'items', 'assistants']));
+		const assistants = asNamedRecords(extractListItems(this.getNode(), response, ['data', 'items', 'assistants']));
 
 		if (assistants.length === 0) {
 			return [
@@ -121,7 +122,7 @@ export async function loadPhoneNumbers(
 			{ limit: 200 },
 		);
 		const phoneNumbers = asNamedRecords(
-			extractListItems(response, ['data', 'items', 'phone_numbers']),
+			extractListItems(this.getNode(), response, ['data', 'items', 'phone_numbers']),
 		);
 
 		if (phoneNumbers.length === 0) {
