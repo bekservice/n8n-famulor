@@ -55,7 +55,7 @@ let operations = Object.entries(spec.paths).flatMap(([path, pathItem]) =>
         required: requestBody.required === true, description: dereference(jsonSchema)?.description,
         fields: bodyFields(jsonSchema),
       } } : {}),
-      ...(responseFormats.some((format) => format.startsWith('audio/')) ? { binary: true, binaryContentType: responseFormats.find(format => format.startsWith('audio/')) } : {}),
+      ...(responseFormats.some((format) => format.startsWith('audio/') || format.startsWith('video/')) ? { binary: true, binaryContentType: responseFormats.find(format => format.startsWith('audio/') || format.startsWith('video/')) } : {}),
     };
   }),
 ).sort((a, b) => a.id.localeCompare(b.id));

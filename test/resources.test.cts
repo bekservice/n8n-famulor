@@ -5,7 +5,7 @@ import {resources,resourceOptions} from '../nodes/Famulor/v3/resources';
 import {operationProperties} from '../nodes/Famulor/v3/properties';
 import {operations} from '../nodes/Famulor/v3/generated/catalog';
 const uuid='00000000-0000-4000-8000-000000000001';
-function context(send:(options:IHttpRequestOptions)=>Promise<unknown>):ILoadOptionsFunctions{return {getCredentials:async()=>({apiKey:'test-key',baseUrl:'https://app.famulor.io'}),helpers:{httpRequestWithAuthentication:async function(_name:string,options:IHttpRequestOptions){return {statusCode:200,body:await send(options)};}}} as unknown as ILoadOptionsFunctions;}
+function context(send:(options:IHttpRequestOptions)=>Promise<unknown>):ILoadOptionsFunctions{return {getNode:()=>({id:'test',name:'Famulor',type:'n8n-nodes-famulor.famulor',typeVersion:3,position:[0,0],parameters:{}}),getCredentials:async()=>({apiKey:'test-key',baseUrl:'https://app.famulor.io'}),helpers:{httpRequestWithAuthentication:async function(_name:string,options:IHttpRequestOptions){return {statusCode:200,body:await send(options)};}}} as unknown as ILoadOptionsFunctions;}
 describe('workspace resource selectors',()=>{
  for(const resource of resources)it(`loads ${resource.label} with a read-only request`,async()=>{
   const requests:IHttpRequestOptions[]=[];

@@ -20,6 +20,9 @@ jobs:
       # compatibility tests without running unrelated dependency build hooks.
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - run: npm run lint -- -c .eslintrc.prepublish.js
+      - run: npm run lint
+      - run: npm run scan
       - run: npm test
+      - run: node templates/test.mjs
+      - run: node templates/test-support.mjs
       - run: npm pack --dry-run

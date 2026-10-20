@@ -1,3 +1,11 @@
+# 2.3.0
+
+- Address the n8n 2.2.0 update review: add a real read-only credential connection test, complete webhook lifecycle methods, use n8n error types throughout utility code, and correct all codex package prefixes/schema versions.
+- Add automatic signed webhook subscriptions in new trigger version 4. Saved version-2/3 receivers keep their explicit manual mode; automatic mode manages only its dedicated subscription.
+- Refresh the catalog to 485 API operations, adding browser session/recording, Magicline connection, automation connection import and webhook subscription actions. Preserve all 474 saved 2.2.0 action routes and input contracts.
+- Return browser recordings as binary video files and preserve exact response bytes.
+- Provide themed branded icons and enforce the official strict CLI linter plus source/distribution scanner in CI and publication gates.
+
 # 2.2.0
 
 - Refresh the native action catalog to all 474 current public API operations, adding 51 actions for private AI Avatars, Shopify, assistant fallback voices, saved History views, email setup and workspace management.

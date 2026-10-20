@@ -1,9 +1,11 @@
+import { NodeOperationError, type INode } from 'n8n-workflow';
+
 export const DEFAULT_BASE_URL = 'https://app.famulor.io';
 export const API_PREFIX = '/api/v1';
 
 const CLASSIC_HOST = 'app.famulor.de';
 
-export function resolveBaseUrl(baseUrl?: string): string {
+export function resolveBaseUrl(node: INode, baseUrl?: string): string {
 	const raw = (baseUrl ?? DEFAULT_BASE_URL).trim();
 	if (!raw) {
 		return DEFAULT_BASE_URL;
@@ -13,11 +15,11 @@ export function resolveBaseUrl(baseUrl?: string): string {
 	try {
 		parsed = new URL(raw);
 	} catch {
-		throw new Error('Famulor Base URL must be an absolute URL such as https://app.famulor.io');
+		throw new NodeOperationError(node, 'Famulor Base URL must be an absolute URL such as https://app.famulor.io');
 	}
 
 	if (parsed.hostname === CLASSIC_HOST) {
-		throw new Error(
+		throw new NodeOperationError(node,
 			'app.famulor.de is Famulor Classic 1.0 and has no /api/v1. Use https://app.famulor.io or a verified whitelabel domain.',
 		);
 	}
@@ -27,8 +29,8 @@ export function resolveBaseUrl(baseUrl?: string): string {
 	return path && path !== '/' ? `${origin}${path}` : origin;
 }
 
-export function buildApiUrl(baseUrl: string | undefined, endpoint: string): string {
-	const base = resolveBaseUrl(baseUrl);
+export function buildApiUrl(node: INode, baseUrl: string | undefined, endpoint: string): string {
+	const base = resolveBaseUrl(node, baseUrl);
 	const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 	return `${base}${API_PREFIX}${path}`;
 }
@@ -44,7 +46,7 @@ export function isE164(phone: string): boolean {
 	return /^\+\d{5,20}$/.test(phone);
 }
 
-export function parseLead(value: unknown): Record<string, unknown> | undefined {
+export function parseLead(node: INode, value: unknown): Record<string, unknown> | undefined {
 	if (value === undefined || value === null || value === '') {
 		return undefined;
 	}
@@ -55,11 +57,11 @@ export function parseLead(value: unknown): Record<string, unknown> | undefined {
 		if (!trimmed || trimmed === '{}') {
 			return undefined;
 		}
-		parsed = JSON.parse(trimmed);
+		try { parsed = JSON.parse(trimmed); } catch { throw new NodeOperationError(node, 'Lead must be a JSON object'); }
 	}
 
 	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-		throw new Error('Lead must be a JSON object');
+		throw new NodeOperationError(node, 'Lead must be a JSON object');
 	}
 
 	const object = parsed as Record<string, unknown>;
@@ -83,7 +85,7 @@ export function buildMakeCallBody(input: MakeCallInput): Record<string, unknown>
 	return body;
 }
 
-export function extractListItems(response: unknown, keys: string[] = ['data', 'items']): unknown[] {
+export function extractListItems(node: INode, response: unknown, keys: string[] = ['data', 'items']): unknown[] {
 	if (Array.isArray(response)) {
 		return response;
 	}
@@ -106,7 +108,7 @@ export function extractListItems(response: unknown, keys: string[] = ['data', 'i
 		}
 	}
 
-	throw new Error('Famulor API returned an unexpected list payload');
+	throw new NodeOperationError(node, 'Famulor API returned an unexpected list payload');
 }
 
 export function unwrapResource(response: unknown): Record<string, unknown> {

@@ -1,6 +1,6 @@
 {
-  "node": "n8n-nodes-base.Famulor",
-  "nodeVersion": "3.0",
+  "node": "n8n-nodes-famulor.Famulor",
+  "nodeVersion": "1.0",
   "codexVersion": "1.0",
   "categories": [
     "Communication"

@@ -6,7 +6,7 @@ import { poll } from './polling/engine';
 
 export class FamulorPollingTrigger implements INodeType {
   description:INodeTypeDescription={
-    displayName:'Famulor Polling Trigger',name:'famulorPollingTrigger',icon:'file:famulor.svg',group:['trigger'],version:1,
+    displayName:'Famulor Polling Trigger',name:'famulorPollingTrigger',icon:{light:'file:famulor.svg',dark:'file:famulor-dark.svg'},group:['trigger'],version:1,
     subtitle:'={{$parameter["event"]}}',description:'Start workflows on Famulor calls, contacts, campaigns and workspace activity',defaults:{name:'Famulor Polling Trigger'},
     inputs:[],outputs:[NodeConnectionTypes.Main],polling:true,credentials:[{name:'famulorApi',required:true}],
     properties:[

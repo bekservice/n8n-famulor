@@ -1,3 +1,4 @@
+import { NodeOperationError } from 'n8n-workflow';
 import type { ILoadOptionsFunctions, INodeListSearchResult } from 'n8n-workflow';
 import { famulorV3Api as famulorApi } from './client';
 import type { ApiField, ApiOperation } from './types';
@@ -20,7 +21,7 @@ export async function resourceOptions({ context, resource, searchValue }: { cont
     const response = await famulorApi.request(context, { method: 'GET', path: `${resource.path}/${search}` });
     const data = famulorApi.isRecord(response) ? response['data'] : undefined;
     const row = resource.detailKey && famulorApi.isRecord(data) ? data[resource.detailKey] : data;
-    if (!famulorApi.isRecord(row) || typeof row['id'] !== 'string') throw new Error('Famulor returned an invalid resource.');
+    if (!famulorApi.isRecord(row) || typeof row['id'] !== 'string') throw new NodeOperationError(context.getNode(), 'Famulor returned an invalid resource.');
     return { options: [{ label: `${resourceLabel(row)} (${row['id']})`, value: row['id'] }] };
   }
   const matches: { label: string; value: string }[] = [];
@@ -28,10 +29,10 @@ export async function resourceOptions({ context, resource, searchValue }: { cont
   for (let offset = 0; offset < 50000; offset += 100) {
     const query = new URLSearchParams({ ...(resource.unpaged ? {} : { limit: '100', offset: String(offset) }), ...(search && searchParam ? { [searchParam]: search } : {}) });
     const response = await famulorApi.request(context, { method: 'GET', path: `${resource.path}${query.size ? `?${query}` : ''}` });
-    if (!famulorApi.isRecord(response)) throw new Error('Famulor returned an invalid resource list.');
+    if (!famulorApi.isRecord(response)) throw new NodeOperationError(context.getNode(), 'Famulor returned an invalid resource list.');
     const data = response['data'];
     const rows = famulorApi.isRecord(data) && resource.key ? data[resource.key] : data;
-    if (!Array.isArray(rows)) throw new Error('Famulor returned an invalid resource list.');
+    if (!Array.isArray(rows)) throw new NodeOperationError(context.getNode(), 'Famulor returned an invalid resource list.');
     for (const row of rows) {
       if (!famulorApi.isRecord(row) || typeof row['id'] !== 'string') continue;
       const label = `${resourceLabel(row)} (${row['id']})`;

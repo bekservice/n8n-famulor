@@ -1,5 +1,5 @@
 {
-  "node": "n8n-nodes-base.FamulorPollingTrigger",
+  "node": "n8n-nodes-famulor.FamulorPollingTrigger",
   "nodeVersion": "1.0",
   "codexVersion": "1.0",
   "categories": [

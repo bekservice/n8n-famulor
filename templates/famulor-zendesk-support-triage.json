@@ -1,0 +1,462 @@
+{
+  "name": "Create an internal Zendesk handoff ticket for unsuccessful Famulor calls",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "nodes": [
+    {
+      "id": "0809d7a6-c9ea-4fae-a1a2-5b9a0617dbb0",
+      "name": "Preview yesterday's triage",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "db43abdb-0ab8-47f5-a369-a393c8a837ce",
+      "name": "Every day at 08:00 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        460
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "caabca10-2cbd-4e92-a4fe-4a8ea109079c",
+      "name": "Configure triage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2458e23f-9503-4864-a880-96d8547972ac",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "a9ce8ed7-828c-48de-adfb-01424981f9e0",
+              "name": "includeSummary",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "4045c941-1619-4477-a83c-357e38431cd0",
+              "name": "requesterId",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "88a23416-a085-4b8f-a585-e9fd9a1e6547",
+      "name": "Build previous UTC day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const now=new Date(); const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate())); const start=new Date(end.getTime()-86400000); return [{json:{...$input.first().json,windowStart:start.toISOString(),windowEnd:end.toISOString()}}];"
+      }
+    },
+    {
+      "id": "0122afa7-9315-422a-a26c-f0668ac4bf15",
+      "name": "Read matching Famulor calls",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/calls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "success",
+              "value": "false"
+            },
+            {
+              "name": "from",
+              "value": "={{ $json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.windowEnd }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "79de479c-107b-4eb3-abdb-c7cf6128deb1",
+      "name": "Validate pages and prepare draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const config=$('Build previous UTC day').first().json;\nconst pages=$input.all().map(item=>item.json); const total=pages[0]?.meta?.pagination?.total;\nif(!Number.isSafeInteger(total)||total<0||total>2000)throw new Error('Missing pagination total or more than 2,000 calls. Narrow the scan before writing.');\nlet calls=[];let offset=0;\nfor(const page of pages){const meta=page?.meta?.pagination;if(!Array.isArray(page?.data)||!meta||meta.total!==total||meta.offset!==offset||meta.limit!==200||page.data.length>200)throw new Error('Inconsistent Famulor pagination; no ticket was created.');calls.push(...page.data);offset+=200;}\nif(calls.length!==total)throw new Error('Incomplete Famulor scan; no ticket was created.');\nconst seen=new Set();const start=Date.parse(config.windowStart),end=Date.parse(config.windowEnd);\nfor(const call of calls){if(typeof call.id!=='string'||!call.id||seen.has(call.id))throw new Error('Missing or duplicate call ID.');seen.add(call.id);const created=Date.parse(call.created_at);if(!Number.isFinite(created)||created<start||created>end||!(call.status === 'completed' && call.success === false))throw new Error('Call is outside the requested triage scope.');}\ncalls=calls.filter(call=>Date.parse(call.created_at)<end);\nconst date=config.windowStart.slice(0,10);const shown=calls.slice(0,50);const lines=shown.map(call=>{let line='Call '+call.id+' | '+call.status+' | created '+call.created_at;if(Number.isFinite(call.duration_sec))line+=' | duration '+call.duration_sec+'s';if(config.includeSummary===true&&typeof call.summary==='string'&&call.summary.trim())line+='\\nSummary: '+call.summary.slice(0,1200);return line;});\nconst subject='Famulor unsuccessful-call handoff — '+date+' ('+calls.length+' calls)';\nconst description='UTC window: '+config.windowStart+' to '+config.windowEnd+' (end excluded).\\nReview the calls below and assign the next support action.\\n'+(calls.length>50?'Showing 50 of '+calls.length+' calls. Review the remaining calls in Famulor.\\n':'')+'\\n'+lines.join('\\n\\n')+'\\n\\nSummaries may be unavailable or arrive later. Re-running this window can create a duplicate ticket.';\nconst escape=value=>value.replace(/[&<>\"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\nreturn [{json:{subject,description,htmlDescription:'<pre>'+escape(description)+'</pre>',hasCases:calls.length>0,caseCount:calls.length,previewOnly:config.previewOnly!==false}}];"
+      }
+    },
+    {
+      "id": "42b9952e-9944-4178-a372-0f7f16fa7a75",
+      "name": "Any calls need triage?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "42b9952e-9944-4178-a372-0f7f16fa7a75",
+              "leftValue": "={{ $json.hasCases }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bc0bc264-b8d4-43cf-af0d-b313066f5b03",
+      "name": "Preview only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bc0bc264-b8d4-43cf-af0d-b313066f5b03",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b1f8743c-d953-436d-ad94-d74d64d79ee9",
+      "name": "Inspect ticket preview",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        160
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0de44c1d-5302-4d6d-abf4-20ff4c28c797",
+      "name": "Validate destination settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const requester=String($('Configure triage').first().json.requesterId??'').trim();if(!/^[1-9]\\d*$/.test(requester)||!Number.isSafeInteger(Number(requester)))throw new Error('Enter an existing Zendesk requester ID before turning preview off.');return $input.all();"
+      }
+    },
+    {
+      "id": "8f095f6b-a71a-44dc-a7c8-017291795b34",
+      "name": "Create private handoff ticket",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        420
+      ],
+      "parameters": {
+        "authentication": "apiToken",
+        "resource": "ticket",
+        "operation": "create",
+        "description": "={{ $json.description }}",
+        "jsonParameters": true,
+        "additionalFieldsJson": "={{ JSON.stringify({subject:$json.subject,requester_id:Number($('Configure triage').first().json.requesterId),status:'open',type:'problem',tags:['famulor','call-handoff'],comment:{body:$json.description,public:false}}) }}"
+      }
+    },
+    {
+      "id": "585eb649-6ebd-4fb4-a5d9-49eff4dc21d9",
+      "name": "About this workflow",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        -500
+      ],
+      "parameters": {
+        "content": "## Who is this for?\nSupport and operations teams using Famulor and Zendesk who want a focused daily unsuccessful-call handoff queue.\n\n## How it works\nEach morning, the workflow reads completed calls explicitly marked unsuccessful created during the previous UTC day. It validates every API page before preparing one aggregate ticket. Empty results produce no write. The preview branch starts enabled, so manual previews show the draft without changing Zendesk.\n\n## Setup\n1. Store a Famulor workspace key with calls:read in an n8n HTTP Header Auth credential: header Authorization, value Bearer followed by your key. Select it in Read matching Famulor calls.\n2. Connect your Zendesk credential. Enter an existing requester ID in Configure triage. This avoids automatically creating a contact.\n3. Run a preview and inspect the draft. Optional summaries start disabled; enable them only if your ticket audience may see conversation summaries. Raw transcripts, phone numbers and email addresses are excluded.\n4. Switch previewOnly off and activate the daily schedule when ready.\n\n## Requirements and customization\nUses only built-in n8n nodes and works without a community package. Change the schedule if needed; the query window always uses UTC. Scans above 2,000 records or incomplete pagination fail before writes. One draft contains at most 50 call references and clearly reports omitted rows. Re-running a non-preview window can create another ticket; this is not exactly-once delivery. The first Zendesk comment is private. Check destination notification rules before activation. [Famulor API setup](https://docs.famulor.io/automations/n8n).",
+        "width": 760,
+        "height": 720,
+        "color": 4
+      }
+    },
+    {
+      "id": "de016fbd-eb15-40d5-a1df-fdff93e3cfed",
+      "name": "1. Select your credentials",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        640,
+        590
+      ],
+      "parameters": {
+        "content": "Use HTTP Header Auth for Famulor: Authorization = Bearer followed by a calls:read key. The workflow export has no credentials or real requester IDs. Choose your ticket-system credential separately.",
+        "width": 490,
+        "height": 210,
+        "color": 7
+      }
+    },
+    {
+      "id": "322f09ce-8220-4246-a975-a96ca4fef56e",
+      "name": "2. Validate before writing",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        870,
+        840
+      ],
+      "parameters": {
+        "content": "Every page and selected call must match the query. Empty or incomplete scans do not create tickets. Only IDs, status, date and duration are included by default; summaries are opt-in.",
+        "width": 490,
+        "height": 210,
+        "color": 7
+      }
+    },
+    {
+      "id": "37b48484-d029-4f1c-a5b2-3e6bb698fe12",
+      "name": "3. Preview, then activate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        650
+      ],
+      "parameters": {
+        "content": "Preview only starts enabled. Configure an existing requester ID, inspect the draft, then turn preview off. This is one daily aggregate, not a per-call real-time workflow. Replays can create duplicates. Check notification settings.",
+        "width": 540,
+        "height": 250,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Preview yesterday's triage": {
+      "main": [
+        [
+          {
+            "node": "Configure triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day at 08:00 UTC": {
+      "main": [
+        [
+          {
+            "node": "Configure triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure triage": {
+      "main": [
+        [
+          {
+            "node": "Build previous UTC day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build previous UTC day": {
+      "main": [
+        [
+          {
+            "node": "Read matching Famulor calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read matching Famulor calls": {
+      "main": [
+        [
+          {
+            "node": "Validate pages and prepare draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate pages and prepare draft": {
+      "main": [
+        [
+          {
+            "node": "Any calls need triage?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any calls need triage?": {
+      "main": [
+        [
+          {
+            "node": "Preview only?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Preview only?": {
+      "main": [
+        [
+          {
+            "node": "Inspect ticket preview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate destination settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate destination settings": {
+      "main": [
+        [
+          {
+            "node": "Create private handoff ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

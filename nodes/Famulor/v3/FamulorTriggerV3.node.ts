@@ -1,5 +1,6 @@
+import { webhookExists, createWebhook, deleteWebhook } from '../webhookLifecycle';
 import { NodeConnectionTypes } from '../connections';
-import type { INodeType, INodeTypeDescription, IWebhookFunctions, IWebhookResponseData } from 'n8n-workflow';
+import type { INodeType, INodeTypeDescription, IHookFunctions, IWebhookFunctions, IWebhookResponseData } from 'n8n-workflow';
 import { extractAssistantId, extractWebhookEvent } from '../api';
 import { SIGNATURE_HEADER,verifyWebhookSignature } from '../webhookSignature';
 
@@ -11,15 +12,22 @@ function assistantId(body: Record<string, unknown>): unknown {
 }
 
 export class FamulorTriggerV3 implements INodeType {
-  description:INodeTypeDescription={displayName:'Famulor Trigger',name:'famulorTrigger',icon:'file:famulor.svg',group:['trigger'],version:3,
+  description:INodeTypeDescription={displayName:'Famulor Trigger',name:'famulorTrigger',icon:{light:'file:famulor.svg',dark:'file:famulor-dark.svg'},group:['trigger'],version:3,
     subtitle:'={{$parameter["event"]}}',description:'Receive signed Famulor call, conversation and booking webhooks',defaults:{name:'Famulor Trigger'},inputs:[],outputs:[NodeConnectionTypes.Main],
     credentials:[{name:'famulorWebhookApi',required:true}],webhooks:[{name:'default',httpMethod:'POST',responseMode:'onReceived',path:'webhook'}],
     properties:[
+{displayName:'Registration',name:'registrationMode',type:'options',noDataExpression:true,default:'manual',options:[{name:'Automatic Subscription',value:'automatic',description:'Create and remove a dedicated signed workspace subscription'},{name:'Existing Manual Destination',value:'manual',description:'Keep an existing manually configured destination unchanged'}]},
       {displayName:'Event',name:'event',type:'options',required:true,default:'',noDataExpression:true,options:webhookEvents.map(event=>({name:event,value:event}))},
       {displayName:'Assistant ID',name:'assistantId',type:'string',default:'',displayOptions:{show:{event:['call.completed','conversation.ended']}},description:'Optional assistant UUID filter. Events without this assistant ID are ignored.'},
       {displayName:'For signed booking events, save the Production URL in the booking event type under Advanced → Webhook URL, then copy its generated signing secret into Famulor Webhook API credentials. For call and conversation events, use Famulor Polling Trigger unless you already have a signed delivery configured. Assistant call-completed and messaging connector URLs are unsigned and cannot use this signed trigger. Existing destinations are not changed automatically.',name:'setupNotice',type:'notice',default:''},
     ],
   };
+  webhookMethods = {default: {
+    async checkExists(this:IHookFunctions) { return webhookExists(this,3); },
+    async create(this:IHookFunctions) { return createWebhook(this,3); },
+    async delete(this:IHookFunctions) { return deleteWebhook(this,3); },
+  }};
+
   async webhook(this:IWebhookFunctions):Promise<IWebhookResponseData>{
     const credentials=await this.getCredentials('famulorWebhookApi');
     const request=this.getRequestObject() as {rawBody?:Buffer|string};
