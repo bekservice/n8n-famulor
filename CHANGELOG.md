@@ -1,3 +1,7 @@
+# 2.3.1
+
+- Refresh the catalog to 487 API operations, adding Magicline Connect studio discovery (`discoverMagiclineConnectStudios`), Magicline Connect API setup (`connectMagiclineConnect`), multi-studio `studio_ids` support on Magicline Open API connections, `speak_transfer_greeting` on assistant handoff tools, and updated reseller managed-plan shortage policy descriptions. Preserve all 485 existing 2.3.0 action routes and input contracts.
+
 # 2.3.0
 
 - Address the n8n 2.2.0 update review: add a real read-only credential connection test, complete webhook lifecycle methods, use n8n error types throughout utility code, and correct all codex package prefixes/schema versions.

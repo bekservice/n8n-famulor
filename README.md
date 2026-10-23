@@ -1,6 +1,6 @@
 # Famulor for n8n
 
-Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **485 native actions**, **32 polling events** and **five signed webhook events**.
+Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **487 native actions**, **32 polling events** and **five signed webhook events**.
 
 Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)** · [Famulor](https://app.famulor.io) · [Integration guide](https://docs.famulor.io/automations/n8n)
 
@@ -117,7 +117,7 @@ node scripts/generate-catalog.mjs path/to/openapi.json --add-operations newOpera
 
 Replace `newOperationId` with an operation not already in this catalog, and omit `--check` to add it. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported.
 
-Tests execute all 485 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
+Tests execute all 487 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
 
 Release by pushing the reviewed commit and a matching version tag. The existing **Publish** GitHub Actions workflow installs the lockfile, builds, lints, tests, and publishes the package with npm provenance. npm publication and n8n Creator Portal verification are separate outcomes.
 
