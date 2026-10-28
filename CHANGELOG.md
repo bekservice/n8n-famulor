@@ -1,3 +1,8 @@
+# 2.4.0
+
+- Refresh the catalog to 501 API operations. New automation actions: folders (`listAutomationFolders`, `createAutomationFolder`, `updateAutomationFolder`, `deleteAutomationFolder`), keyless export and import (`exportAutomation`, `importAutomation`), share links (`shareAutomation`, `getAutomationShare`, `revokeAutomationShare`, `importSharedAutomation`), built-in templates (`listAutomationTemplates`, `getAutomationTemplate`, `useAutomationTemplate`) and `duplicateAutomation`. `listAutomations` filters by `folder_id`; `createAutomation` and `updateAutomation` accept `folder_id`. Imports, shares and templates always create drafts without keys or connections.
+- Pick up current API descriptions and enum values for audience contacts, history, messaging connectors, suppression entries, assistants, team invites and memory settings. Preserve all 487 existing 2.3.1 action routes and input contracts.
+
 # 2.3.1
 
 - Refresh the catalog to 487 API operations, adding Magicline Connect studio discovery (`discoverMagiclineConnectStudios`), Magicline Connect API setup (`connectMagiclineConnect`), multi-studio `studio_ids` support on Magicline Open API connections, `speak_transfer_greeting` on assistant handoff tools, and updated reseller managed-plan shortage policy descriptions. Preserve all 485 existing 2.3.0 action routes and input contracts.
