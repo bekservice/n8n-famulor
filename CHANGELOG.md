@@ -1,3 +1,7 @@
+# 2.4.1
+
+- List voices accepts an optional Translation field. Turn it on only for a Translate assistant. Leave it off for Pipeline, Realtime and every other engine; those requests stay on the full library. Saving a voice that is not in the Translate list is rejected by the API.
+
 # 2.4.0
 
 - Refresh the catalog to 501 API operations. New automation actions: folders (`listAutomationFolders`, `createAutomationFolder`, `updateAutomationFolder`, `deleteAutomationFolder`), keyless export and import (`exportAutomation`, `importAutomation`), share links (`shareAutomation`, `getAutomationShare`, `revokeAutomationShare`, `importSharedAutomation`), built-in templates (`listAutomationTemplates`, `getAutomationTemplate`, `useAutomationTemplate`) and `duplicateAutomation`. `listAutomations` filters by `folder_id`; `createAutomation` and `updateAutomation` accept `folder_id`. Imports, shares and templates always create drafts without keys or connections.
