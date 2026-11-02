@@ -56,7 +56,16 @@ describe('native API actions',()=>{
    const current=operations.find(op=>op.id===saved.id)!;assert.ok(current,saved.id);
    for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],saved.id+': '+key);
    const fields=[...current.parameters,...current.body?.fields??[]];
-   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assert.equal(field.required,previous.required);}
+   for(const previous of saved.fields){
+    const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;
+    assert.ok(field,saved.id+': '+previous.name);
+    assert.equal(field.type,previous.type);
+    if(saved.id==='submitPhoneNumberVerification'&&previous.name==='prefix'){
+     assert.equal(previous.required,true);
+     assert.equal(field.required,false);
+     assert.ok(operationProperties(current).some(prop=>prop.name==='body_prefix'));
+    } else assert.equal(field.required,previous.required);
+   }
    for(const field of fields.filter(f=>f.required))assert.ok(saved.fields.some(f=>f.name===field.name&&f.in===field.in&&f.required),saved.id+': new required field '+field.name);
   }
  });
@@ -90,6 +99,7 @@ describe('native API actions',()=>{
   for(const field of operation.parameters.filter(field=>field.required))required[`${field.in}_${field.name}`]=sample(field);
   for(const field of operation.body?.fields?.filter(field=>field.required)??[])required[`body_${field.name}`]=sample(field);
   if(operation.body?.required&&!operation.body.fields)required.body={};
+  if(operation.id==='submitPhoneNumberVerification')required.body_prefix='01';
   const defaults=NodeHelpers.getNodeParameters(node.description.properties,required as INodeParameters,true,false,{typeVersion:3},node.description)!;
   assert.deepEqual(defaults.optionalFields??{},{});
   const requests:IHttpRequestOptions[]=[];
@@ -101,7 +111,7 @@ describe('native API actions',()=>{
   assert.equal(new URL(req.url).origin,'https://app.famulor.io');
   assert.equal(new URL(req.url).pathname,'/api/v1'+operation.path.replace(/\{([^}]+)\}/g,(_,key:string)=>encodeURIComponent(String(required[`path_${key}`]))));
   if(operation.body?.fields){
-   const expected=Object.fromEntries(operation.body.fields.filter(field=>field.required).map(field=>[field.name,required[`body_${field.name}`]]));
+   const expected=Object.fromEntries(operation.body.fields.filter(field=>Object.hasOwn(required,`body_${field.name}`)).map(field=>[field.name,required[`body_${field.name}`]]));
    assert.deepEqual(req.body,operation.body.required||Object.keys(expected).length?expected:undefined);
   }
   assert.deepEqual(result[0][0].pairedItem,{item:0});
@@ -123,6 +133,34 @@ describe('native API actions',()=>{
  it('does not accept legacy text as an array request body',()=>{
   const operation:Parameters<typeof famulorV3Api.buildRequest>[0]['operation']={id:'fixture',method:'POST',path:'/test',summary:'Test',description:'Test',tag:'Test',parameters:[],body:{required:true,fields:[{name:'items',type:'array',required:true}]}};
   assert.throws(()=>famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{body_items:'a,b'}}),/valid array/);
+ });
+ it('keeps the saved verification Prefix and requires it only for local numbers',async()=>{
+  const operation=operations.find(op=>op.id==='submitPhoneNumberVerification')!;
+  const props=operationProperties(operation);
+  assert.equal(props.find(prop=>prop.name==='body_prefix')?.required,undefined);
+  assert.ok(props.some(prop=>prop.name==='body_country'));
+  assert.ok(!props.some(prop=>prop.name==='body'));
+  const run=async(type:string|undefined,prefix:string|undefined)=>{
+   const saved:INodeParameters={resource:operation.tag,operation:operation.id,body_country:'AT',
+    body_email:'qa@example.com',
+    optionalFields:{body_address:'{"city":"Vienna"}',...(type?{body_type:type}:{})},...(prefix===undefined?{}:{body_prefix:prefix})};
+   const defaults=NodeHelpers.getNodeParameters(node.description.properties,saved,true,false,{typeVersion:3},node.description)!;
+   const requests:IHttpRequestOptions[]=[];
+   await node.execute.call(context(defaults,async req=>{requests.push(req);return {statusCode:201,body:{data:{id:uuid}}};}));
+   const body=requests[0].body as Record<string,unknown>;
+   assert.deepEqual(body.address,{city:'Vienna'});
+   return body;
+  };
+  assert.equal((await run(undefined,'01')).prefix,'01');
+  assert.equal((await run('local','+431')).prefix,'+431');
+  for(const type of ['mobile','national']){
+   const body=await run(type,undefined);
+   assert.equal(body.type,type);
+   assert.ok(!Object.hasOwn(body,'prefix'));
+   assert.equal((await run(type,'+43664')).prefix,'+43664');
+  }
+  await assert.rejects(run(undefined,undefined),/area code/);
+  await assert.rejects(run('local',' '),/area code/);
  });
  it('preserves saved custom-domain address inputs and allows new hosted addresses',async()=>{
   const operation=operations.find(operation=>operation.id==='createEmailAddress')!;
