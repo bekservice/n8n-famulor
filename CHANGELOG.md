@@ -1,3 +1,7 @@
+# 2.5.0
+
+- Edit an unused customer payment link with the optional `replace_payment_id` field on Create Platform Custom Payment. Existing workflows keep their saved inputs.
+
 # 2.4.0
 
 - Refresh the catalog to 501 API operations. New automation actions: folders (`listAutomationFolders`, `createAutomationFolder`, `updateAutomationFolder`, `deleteAutomationFolder`), keyless export and import (`exportAutomation`, `importAutomation`), share links (`shareAutomation`, `getAutomationShare`, `revokeAutomationShare`, `importSharedAutomation`), built-in templates (`listAutomationTemplates`, `getAutomationTemplate`, `useAutomationTemplate`) and `duplicateAutomation`. `listAutomations` filters by `folder_id`; `createAutomation` and `updateAutomation` accept `folder_id`. Imports, shares and templates always create drafts without keys or connections.

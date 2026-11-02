@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const specPath = process.argv[2];
-if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,...]');
+if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,... | --add-optional-fields operationId,...]');
 const source = readFileSync(specPath, 'utf8');
 const spec = JSON.parse(source);
 
@@ -62,7 +62,8 @@ let operations = Object.entries(spec.paths).flatMap(([path, pathItem]) =>
 if (new Set(operations.map((operation) => operation.id)).size !== operations.length) throw new Error('Duplicate operationId');
 const target = fileURLToPath(new URL('../nodes/Famulor/v3/generated/catalog.ts', import.meta.url));
 let catalogSource = { url: 'https://docs.famulor.io/api-reference/openapi.json', sha256: createHash('sha256').update(source).digest('hex'), count: operations.length };
-const addIndex = process.argv.indexOf('--add-operations');
+const fieldsOnly = process.argv.includes('--add-optional-fields');
+const addIndex = process.argv.indexOf(fieldsOnly ? '--add-optional-fields' : '--add-operations');
 if (addIndex !== -1) {
   const requested = process.argv[addIndex + 1]?.split(',') ?? [];
   if (!requested.length || requested.some((id) => !id || id.startsWith('--')) || new Set(requested).size !== requested.length) throw new Error('Provide unique operation IDs after --add-operations');
@@ -78,6 +79,17 @@ if (addIndex !== -1) {
   for (const operation of selected) {
     const prior = existing.find((item) => item.id === operation.id);
     const wasAdded = previousSource.additions?.some((entry) => entry.operationIds.includes(operation.id));
+    if (fieldsOnly) {
+      if (!prior?.body || !operation.body) throw new Error(`Expected an existing operation with a body: ${operation.id}`);
+      const previousKeys = new Set(prior.body.fields.map((field) => field.name));
+      const existingFields = operation.body.fields.filter((field) => previousKeys.has(field.name));
+      const addedFields = operation.body.fields.filter((field) => !previousKeys.has(field.name));
+      const withoutAdditions = { ...operation, body: { ...operation.body, fields: existingFields } };
+      if (JSON.stringify(withoutAdditions) !== JSON.stringify(prior) || addedFields.some((field) => field.required)) {
+        throw new Error(`Only optional fields can be added: ${operation.id}`);
+      }
+      continue;
+    }
     if (prior && (!wasAdded || JSON.stringify(prior) !== JSON.stringify(operation))) throw new Error(`Additive mode cannot replace existing operation: ${operation.id}`);
   }
   operations = [...existing.filter((item) => !requested.includes(item.id)), ...selected].sort((a, b) => a.id.localeCompare(b.id));
