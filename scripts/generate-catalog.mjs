@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const specPath = process.argv[2];
-if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,...]');
+if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,... | --update-body-field operationId.field]');
 const source = readFileSync(specPath, 'utf8');
 const spec = JSON.parse(source);
 
@@ -27,7 +27,15 @@ function field(schemaInput) {
 
 function bodyFields(input) {
   const schema = dereference(input) ?? {};
-  if (schema.oneOf || schema.anyOf || schema.allOf || !schema.properties) return undefined;
+  if (schema.oneOf || schema.anyOf || !schema.properties) return undefined;
+  // Conditional requirements add no input fields. Composed schemas that can
+  // change the shape still use the JSON editor.
+  if (schema.allOf && !schema.allOf.every(rule =>
+    rule.if && Array.isArray(rule.then?.required) &&
+    Object.keys(rule).every(key => key === 'if' || key === 'then') &&
+    Object.keys(rule.then).every(key => key === 'required') &&
+    rule.then.required.every(name => Object.hasOwn(schema.properties, name)),
+  )) return undefined;
   return Object.entries(schema.properties).filter(([, value]) => !dereference(value).readOnly).map(([name, value]) => ({
     name, required: (schema.required ?? []).includes(name), ...field(value),
   }));
@@ -63,6 +71,22 @@ if (new Set(operations.map((operation) => operation.id)).size !== operations.len
 const target = fileURLToPath(new URL('../nodes/Famulor/v3/generated/catalog.ts', import.meta.url));
 let catalogSource = { url: 'https://docs.famulor.io/api-reference/openapi.json', sha256: createHash('sha256').update(source).digest('hex'), count: operations.length };
 const addIndex = process.argv.indexOf('--add-operations');
+const fieldIndex = process.argv.indexOf('--update-body-field');
+if (addIndex !== -1 && fieldIndex !== -1) throw new Error('Choose one scoped catalog mode');
+if (fieldIndex !== -1) {
+  const name = process.argv[fieldIndex + 1] ?? '';
+  const [id, fieldName, extra] = name.split('.');
+  const previous = readFileSync(target, 'utf8');
+  const previousSource = JSON.parse(previous.match(/export const catalogSource = (.+);/)[1]);
+  const existing = previous.split('\n').filter(line => line.startsWith('  {')).map(line => JSON.parse(line.trim().replace(/,$/, '')));
+  const fields = existing.find(operation => operation.id === id)?.body?.fields;
+  const index = fields?.findIndex(field => field.name === fieldName) ?? -1;
+  const replacement = operations.find(operation => operation.id === id)?.body?.fields?.find(field => field.name === fieldName);
+  if (extra !== undefined || index < 0 || !replacement) throw new Error('Select a body field present in both catalogs');
+  fields[index] = replacement;
+  operations = existing;
+  catalogSource = { ...previousSource, fieldUpdates: { ...previousSource.fieldUpdates, [name]: catalogSource.sha256 } };
+}
 if (addIndex !== -1) {
   const requested = process.argv[addIndex + 1]?.split(',') ?? [];
   if (!requested.length || requested.some((id) => !id || id.startsWith('--')) || new Set(requested).size !== requested.length) throw new Error('Provide unique operation IDs after --add-operations');

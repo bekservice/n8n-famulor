@@ -117,6 +117,8 @@ node scripts/generate-catalog.mjs path/to/openapi.json --add-operations newOpera
 
 Replace `newOperationId` with an operation not already in this catalog, and omit `--check` to add it. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported.
 
+To refresh a single existing body field while preserving all other saved mappings, use `--update-body-field submitPhoneNumberVerification.prefix`. Repeat with `--check` against the same spec. The `fieldUpdates` metadata records the source hash for each selected field.
+
 Tests execute all 501 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
 
 Release by pushing the reviewed commit and a matching version tag. The existing **Publish** GitHub Actions workflow installs the lockfile, builds, lints, tests, and publishes the package with npm provenance. npm publication and n8n Creator Portal verification are separate outcomes.

@@ -26,10 +26,10 @@ function fieldProperty(field: ApiField, name: string, operation: ApiOperation): 
   return prop;
 }
 
-// This input was required in 2.1.1. Keep its saved top-level parameter even
-// though the API now also allows a hosted address without a custom domain.
+// Keep formerly required fields at their original location in saved workflows.
 export function isLegacyTopLevelField(operation: ApiOperation, name: string): boolean {
-  return operation.id === 'createEmailAddress' && name === 'body_domain_id';
+  return (operation.id === 'createEmailAddress' && name === 'body_domain_id') ||
+    (operation.id === 'submitPhoneNumberVerification' && name === 'body_prefix');
 }
 
 export function operationProperties(operation: ApiOperation): INodeProperties[] {

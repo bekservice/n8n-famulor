@@ -29,5 +29,25 @@ it('scoped generation preserves saved descriptors and rejects unknown, duplicate
   assert.ok(generated.includes('"sha256":"original-spec"'));
   assert.ok(generated.includes('"operationIds":["newOperation"]'));
   assert.equal(run('newOperation',true).status,0);
+  // Updating one body field retains the other released inputs even if the
+  // new source changes them or adds conditional requirements.
+  const stored=JSON.parse(generated.split('\n').find(line=>line.includes('"id":"newOperation"'))!.trim().replace(/,$/,''));
+  const savedFields=[{name:'type',type:'string',required:false},{name:'prefix',type:'string',required:true}];
+  const saved={...stored,body:{required:true,fields:savedFields}};
+  writeFileSync(catalog,generated.replace(JSON.stringify(stored),JSON.stringify(saved)));
+  const conditional={type:'object',properties:{type:{type:'string',description:'Unrelated change'},prefix:{type:'string'}},
+   allOf:[{if:{properties:{type:{const:'local'}}},then:{required:['prefix']}}]};
+  writeFileSync(spec,JSON.stringify({paths:{'/original':{get:{operationId:'originalOperation',summary:'Unrelated edit'}},
+   '/new':{post:{operationId:'newOperation',summary:'New',requestBody:{content:{'application/json':{schema:conditional}}}}}}}));
+  const update=(field:string,check=false)=>spawnSync(process.execPath,[script,spec,'--update-body-field',field,...(check?['--check']:[])],{encoding:'utf8'});
+  assert.notEqual(update('newOperation.unknown').status,0);
+  assert.equal(update('newOperation.prefix').status,0);
+  const updated=readFileSync(catalog,'utf8');
+  assert.ok(updated.includes(JSON.stringify(original)));
+  assert.ok(updated.includes(JSON.stringify(savedFields[0])));
+  assert.ok(updated.includes('"name":"prefix","required":false,"type":"string"'));
+  assert.ok(updated.includes('"fieldUpdates":{"newOperation.prefix":'));
+  assert.equal(update('newOperation.prefix',true).status,0);
+
  } finally { rmSync(root,{recursive:true,force:true}); }
 });
