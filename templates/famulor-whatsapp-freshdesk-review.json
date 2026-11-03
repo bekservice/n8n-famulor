@@ -1,0 +1,420 @@
+{
+  "name": "Review unsuccessful WhatsApp conversations in a daily Freshdesk triage ticket",
+  "nodes": [
+    {
+      "id": "a2283bdb-27e7-4d5f-a07d-3853eb7d4b59",
+      "name": "Run manual preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "9b6c3047-93fc-465c-a0f5-389a52cfff78",
+      "name": "Daily review schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2b6a3f6c-fe9a-4f33-a5c3-bfbb2bf543d9",
+      "name": "Configure workflow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f2fa680d-0bcf-46fa-a95c-ad2cb7e232f7",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "17fa802a-c053-47fd-ab68-5748eff344bf",
+              "name": "requesterId",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "b4d25c0d-3cc6-476f-a8a7-639b575639a1",
+      "name": "Build scan window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const c=$input.first().json;const now=new Date();const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));const start=new Date(end.getTime()-1*86400000);return [{json:{...c,windowStart:start.toISOString(),windowEnd:end.toISOString(),runAt:now.toISOString()}}];"
+      }
+    },
+    {
+      "id": "868cbb39-e497-4a26-a667-477244a25d00",
+      "name": "Read unsuccessful WhatsApp conversations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "whatsapp"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "outcome",
+              "value": "unsuccessful"
+            },
+            {
+              "name": "from",
+              "value": "={{ $('Build scan window').first().json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Build scan window').first().json.windowEnd }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "787fa68f-d1c2-472f-a912-10693011f724",
+      "name": "Prepare triage references",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function historyPages(pages, window, channels) {\n\tconst total = pages[0]?.meta?.pagination?.total;\n\tif (!Number.isSafeInteger(total) || total < 0 || total > 2000) throw new Error('History scan is missing its total or exceeds 2,000 conversations. Narrow the window before writing.');\n\tconst start = Date.parse(window.windowStart), end = Date.parse(window.windowEnd);\n\tif (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) throw new Error('Invalid scan window.');\n\tconst all = [], seen = new Set();\n\tfor (let i = 0; i < pages.length; i++) {\n\t\tconst page = pages[i], meta = page?.meta?.pagination;\n\t\tif (!Array.isArray(page?.data) || !meta || meta.total !== total || meta.offset !== i * 200 || meta.limit !== 200 || page.data.length > 200) throw new Error('Inconsistent History pagination. No destination write was attempted.');\n\t\tfor (const row of page.data) {\n\t\t\tconst stamp = Date.parse(row.last_activity_at);\n\t\t\tconst uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);\n\t\t\tif ((row.thread_id != null && !uuid(row.thread_id)) || (row.assistant_id != null && !uuid(row.assistant_id)) || typeof row.last_activity_at !== 'string') throw new Error('Invalid History relation or activity timestamp.');\n\t\t\tif (typeof row.id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.id) || seen.has(row.id) || !channels.includes(row.channel) || !Number.isFinite(stamp) || stamp < start || stamp > end) throw new Error('History row is duplicated, malformed or outside the requested scope.');\n\t\t\tseen.add(row.id);\n\t\t\tall.push(row);\n\t\t}\n\t}\n\tif (all.length !== total) throw new Error('Incomplete History scan. No destination write was attempted.');\n\treturn all.filter(row => Date.parse(row.last_activity_at) < end);\n}\nconst w=$('Build scan window').first().json;const rows=historyPages($input.all().map(i=>i.json),w,['whatsapp']);if(rows.some(r=>r.status!=='completed'))throw new Error('Expected completed conversations.');if(!rows.length)return [];const shown=rows.slice(0,50);const description='Review unsuccessful WhatsApp conversations in Famulor. UTC window: '+w.windowStart+' to '+w.windowEnd+' (end excluded).\\n'+shown.map(r=>'Conversation '+r.id+' | '+r.status+' | last activity '+r.last_activity_at).join('\\n')+(rows.length>50?'\\nShowing 50 of '+rows.length+'; review the rest in Famulor.':'')+'\\nNo message bodies, contact details or summaries are copied. Re-running this window can create a duplicate ticket.';const escape=s=>s.replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));return [{json:{subject:'Famulor WhatsApp review — '+w.windowStart.slice(0,10)+' ('+rows.length+')',description,htmlDescription:'<pre>'+escape(description)+'</pre>',caseCount:rows.length,previewOnly:w.previewOnly!==false}}];"
+      }
+    },
+    {
+      "id": "2428cf32-0204-4e6b-a4c3-ff4f93e324a4",
+      "name": "Preview only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2428cf32-0204-4e6b-a4c3-ff4f93e324a4",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2e808e50-feec-40fa-a400-56801b9e2181",
+      "name": "Inspect triage draft",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5273c032-34f4-4d75-aed7-c8c8c20e46ae",
+      "name": "Validate existing requester",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const id=String($('Configure workflow').first().json.requesterId??'');if(!/^[1-9]\\d*$/.test(id)||!Number.isSafeInteger(Number(id)))throw new Error('Choose an existing Freshdesk requester before enabling writes.');return $input.all();"
+      }
+    },
+    {
+      "id": "58999fdd-9525-4109-aa87-0dbb97c19f85",
+      "name": "Create WhatsApp review ticket",
+      "type": "n8n-nodes-base.freshdesk",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        420
+      ],
+      "parameters": {
+        "resource": "ticket",
+        "operation": "create",
+        "requester": "requesterId",
+        "requesterIdentificationValue": "={{ $('Configure workflow').first().json.requesterId }}",
+        "status": "open",
+        "priority": "medium",
+        "source": "phone",
+        "options": {
+          "subject": "={{ $json.subject }}",
+          "description": "={{ $json.htmlDescription }}",
+          "tags": "famulor,call-triage"
+        }
+      }
+    },
+    {
+      "id": "ed61479c-f619-41ad-a3c9-7d6fce9f7b6b",
+      "name": "Start here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -50
+      ],
+      "parameters": {
+        "content": "## WhatsApp support triage\nOne daily ticket links completed WhatsApp conversations whose Famulor analysis marks them unsuccessful. This is not a live message stream or a complete human-handoff queue. Preview is enabled; importing does not activate the schedule.",
+        "width": 600,
+        "height": 210,
+        "color": 7
+      }
+    },
+    {
+      "id": "509f3f14-096d-4eb7-a625-1cfda141b8b3",
+      "name": "Connect and configure",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        620,
+        -50
+      ],
+      "parameters": {
+        "content": "## Setup\nSelect a Famulor History-read HTTP Header Auth credential in the read node (calls:read scope). Select Freshdesk credentials and an existing requester ID. No customer resource is preselected. Keep previewOnly on for the first run.\n[Famulor API setup](https://docs.famulor.io/automations/n8n)",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "ca079b51-9fcd-47d1-a09f-d26c4dcefcd4",
+      "name": "Coverage and privacy",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        600
+      ],
+      "parameters": {
+        "content": "## Review before writing\nUTC previous day, up to 2,000 rows. Invalid or incomplete pages stop before writes. At most 50 references are included; omitted counts are stated. Analysis may arrive late. Bodies, names, numbers and summaries stay in Famulor.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "206334aa-5d1c-4a4c-a047-fed9f188b7be",
+      "name": "Enable deliberately",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1390,
+        600
+      ],
+      "parameters": {
+        "content": "## Destination test and repeats\nVerify the exact export in a designated test Freshdesk area before enabling writes. Check requester, routing and notification rules. Re-running a window can duplicate the ticket; inspect Freshdesk before retrying an uncertain write.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Run manual preview": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily review schedule": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure workflow": {
+      "main": [
+        [
+          {
+            "node": "Build scan window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build scan window": {
+      "main": [
+        [
+          {
+            "node": "Read unsuccessful WhatsApp conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read unsuccessful WhatsApp conversations": {
+      "main": [
+        [
+          {
+            "node": "Prepare triage references",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare triage references": {
+      "main": [
+        [
+          {
+            "node": "Preview only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview only?": {
+      "main": [
+        [
+          {
+            "node": "Inspect triage draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate existing requester",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate existing requester": {
+      "main": [
+        [
+          {
+            "node": "Create WhatsApp review ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {},
+  "tags": []
+}
