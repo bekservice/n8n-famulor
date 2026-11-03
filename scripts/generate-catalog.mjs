@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const specPath = process.argv[2];
-if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,... | --add-optional-fields operationId,...]');
+if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,... | --add-optional-fields operationId,... [--fields fieldName,...]]');
 const source = readFileSync(specPath, 'utf8');
 const spec = JSON.parse(source);
 
@@ -67,15 +67,30 @@ const addIndex = process.argv.indexOf(fieldsOnly ? '--add-optional-fields' : '--
 if (addIndex !== -1) {
   const requested = process.argv[addIndex + 1]?.split(',') ?? [];
   if (!requested.length || requested.some((id) => !id || id.startsWith('--')) || new Set(requested).size !== requested.length) throw new Error('Provide unique operation IDs after --add-operations');
-  const selected = requested.map((id) => {
-    const operation = operations.find((item) => item.id === id);
-    if (!operation) throw new Error(`Unknown additive operation: ${id}`);
-    return operation;
-  });
   const previous = readFileSync(target, 'utf8');
   const previousSource = JSON.parse(previous.match(/export const catalogSource = (.+);/)[1]);
   const existing = previous.split('\n').filter((line) => line.startsWith('  {')).map((line) => JSON.parse(line.trim().replace(/,$/, '')));
   if (new Set(existing.map((operation) => operation.id)).size !== existing.length) throw new Error('Duplicate operationId in existing catalog');
+  const selected = requested.map((id) => {
+    const operation = operations.find((item) => item.id === id);
+    if (!operation) throw new Error(`Unknown additive operation: ${id}`);
+    if (fieldsOnly && process.argv.includes('--fields')) {
+      const names = process.argv[process.argv.indexOf('--fields') + 1]?.split(',') ?? [];
+      const prior = existing.find((item) => item.id === id);
+      if (!prior?.body?.fields) throw new Error(`Expected existing body fields for ${id}`);
+      if (!names.length || new Set(names).size !== names.length) throw new Error('Provide unique field names after --fields');
+      const fields = names.map((name) => {
+        const field = operation.body?.fields?.find((item) => item.name === name);
+        if (!field || field.required) throw new Error(`Expected optional field ${id}.${name}`);
+        const saved = prior.body.fields.find((item) => item.name === name);
+        if (saved && JSON.stringify(saved) !== JSON.stringify(field)) throw new Error(`Cannot replace saved field ${id}.${name}`);
+        return field;
+      });
+      const additions = fields.filter((field) => !prior.body.fields.some((item) => item.name === field.name));
+      return { ...prior, body: { ...prior.body, fields: [...prior.body.fields, ...additions] } };
+    }
+    return operation;
+  });
   for (const operation of selected) {
     const prior = existing.find((item) => item.id === operation.id);
     const wasAdded = previousSource.additions?.some((entry) => entry.operationIds.includes(operation.id));

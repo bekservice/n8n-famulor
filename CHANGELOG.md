@@ -1,3 +1,7 @@
+# 2.6.0
+
+- Update Assistant accepts optional fields to turn the voice knowledge search announcement on or off and set its wording.
+
 # 2.5.0
 
 - Edit an unused customer payment link with the optional `replace_payment_id` field on Create Platform Custom Payment. Existing workflows keep their saved inputs.
