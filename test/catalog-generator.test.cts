@@ -42,3 +42,15 @@ it('offers replacement by payment ID on the existing custom-payment action', () 
  assert.equal(field.required,false);
  assert.equal(field.format,'uuid');
 });
+
+it('offers the announcement switch and text as optional assistant update fields', () => {
+ const source = readFileSync('nodes/Famulor/v3/generated/catalog.ts', 'utf8');
+ for (const id of ['replaceAssistant', 'updateAssistant']) {
+  const line = source.split('\n').find((entry) => entry.startsWith(`  {"id":"${id}"`));
+  assert.ok(line);
+  const { body } = JSON.parse(line.trim().replace(/,$/, ''));
+  for (const name of ['knowledge_search_announcement_enabled', 'knowledge_search_announcement_text']) {
+   assert.equal(body.fields.find((field: { name: string }) => field.name === name)?.required, false);
+  }
+ }
+});
