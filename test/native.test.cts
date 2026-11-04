@@ -28,6 +28,21 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
+ it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
+  assert.equal(baseline.length,501);
+  for(const saved of baseline){
+   const current=operations.find(operation=>operation.id===saved.id);assert.ok(current,saved.id);
+   for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],`${saved.id}: ${key}`);
+   const fields=[...current.parameters,...(current.body?.fields??[])];
+   for(const old of saved.fields){
+    const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
+    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+   }
+   for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
+  }
+ });
+
  it('retains all published v2.1.1 action routes and saved input field names and types',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.1.1-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string;required:boolean}[]}[];
   assert.equal(baseline.length,423);

@@ -50,3 +50,14 @@ it('scoped refresh adds optional fields and multipart operations while refusing 
   writeFileSync(spec,JSON.stringify(document));assert.notEqual(run().status,0);assert.equal(readFileSync(catalog,'utf8'),generated);
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+it('offers replacement by payment ID on the existing custom-payment action', () => {
+ const source=readFileSync(join(process.cwd(),'nodes/Famulor/v3/generated/catalog.ts'),'utf8');
+ const line=source.split('\n').find((entry)=>entry.startsWith('  {"id":"createPlatformCustomPayment"'));
+ assert.ok(line);
+ const operation=JSON.parse(line.trim().replace(/,$/,''));
+ const field=operation.body.fields.find((item:{name:string})=>item.name==='replace_payment_id');
+ assert.ok(field);
+ assert.equal(field.required,false);
+ assert.equal(field.format,'uuid');
+});
