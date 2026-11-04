@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const specPath = process.argv[2];
-if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,...]');
+if (!specPath) throw new Error('Usage: node scripts/generate-catalog.mjs <openapi.json> [--check] [--add-operations operationId,...] [--refresh-operations operationId,...]');
 const source = readFileSync(specPath, 'utf8');
 const spec = JSON.parse(source);
 
@@ -27,7 +27,7 @@ function field(schemaInput) {
 
 function bodyFields(input) {
   const schema = dereference(input) ?? {};
-  if (schema.oneOf || schema.anyOf || schema.allOf || !schema.properties) return undefined;
+  if (schema.oneOf || schema.anyOf || !schema.properties) return undefined;
   return Object.entries(schema.properties).filter(([, value]) => !dereference(value).readOnly).map(([name, value]) => ({
     name, required: (schema.required ?? []).includes(name), ...field(value),
   }));
@@ -39,7 +39,8 @@ let operations = Object.entries(spec.paths).flatMap(([path, pathItem]) =>
     if (typeof operation.operationId !== 'string' || !/^[a-z][a-zA-Z0-9]*$/.test(operation.operationId)) throw new Error(`Invalid operationId: ${method} ${path}. Use a camelCase identifier containing only letters and numbers.`);
     if (new Set(['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static', 'implements', 'interface', 'package', 'private', 'protected', 'public']).has(operation.operationId)) throw new Error('Operation IDs must not be reserved JavaScript identifiers.');
     const requestBody = dereference(operation.requestBody);
-    const jsonSchema = requestBody?.content?.['application/json']?.schema;
+    const multipart = !requestBody?.content?.['application/json'] && Boolean(requestBody?.content?.['multipart/form-data']);
+    const jsonSchema = requestBody?.content?.['application/json']?.schema ?? requestBody?.content?.['multipart/form-data']?.schema;
     const responseFormats = Object.entries(operation.responses ?? {}).filter(([status]) => /^2/.test(status)).flatMap(([, response]) => Object.keys(dereference(response).content ?? {}));
     return {
       id: operation.operationId, method: method.toUpperCase(), path,
@@ -52,7 +53,7 @@ let operations = Object.entries(spec.paths).flatMap(([path, pathItem]) =>
         style: parameter.style, explode: parameter.explode,
       })),
       ...(requestBody ? { body: {
-        required: requestBody.required === true, description: dereference(jsonSchema)?.description,
+        required: requestBody.required === true, ...(multipart ? { multipart: true } : {}), description: dereference(jsonSchema)?.description,
         fields: bodyFields(jsonSchema),
       } } : {}),
       ...(responseFormats.some((format) => format.startsWith('audio/') || format.startsWith('video/')) ? { binary: true, binaryContentType: responseFormats.find(format => format.startsWith('audio/') || format.startsWith('video/')) } : {}),
@@ -84,6 +85,35 @@ if (addIndex !== -1) {
   const additions = (previousSource.additions ?? []).map((entry) => ({ ...entry, operationIds: entry.operationIds.filter((id) => !requested.includes(id)) })).filter((entry) => entry.operationIds.length);
   additions.push({ sha256: catalogSource.sha256, operationIds: [...requested].sort() });
   catalogSource = { ...previousSource, count: operations.length, additions };
+}
+const refreshIndex = process.argv.indexOf('--refresh-operations');
+if (refreshIndex !== -1) {
+  if (addIndex !== -1) throw new Error('Choose either additive generation or scoped refresh');
+  const requested = process.argv[refreshIndex + 1]?.split(',') ?? [];
+  if (!requested.length || requested.some(id=>!id||id.startsWith('--')) || new Set(requested).size!==requested.length) throw new Error('Provide unique operation IDs after --refresh-operations');
+  const previous = readFileSync(target,'utf8');
+  const previousSource = JSON.parse(previous.match(/export const catalogSource = (.+);/)[1]);
+  const existing = previous.split('\n').filter(line=>line.startsWith('  {')).map(line=>JSON.parse(line.trim().replace(/,$/,'')));
+  const selected=requested.map(id=>{
+    const next=operations.find(operation=>operation.id===id);
+    if (!next) throw new Error(`Unknown scoped operation: ${id}`);
+    const prior=existing.find(operation=>operation.id===id);
+    if (prior) {
+      for (const key of ['method','path','tag']) if (prior[key]!==next[key]) throw new Error(`Scoped refresh changes saved ${id} ${key}`);
+      const oldFields=[...prior.parameters,...(prior.body?.fields??[])];
+      const newFields=[...next.parameters,...(next.body?.fields??[])];
+      for (const field of oldFields) {
+        const replacement=newFields.find(next=>next.name===field.name&&next.in===field.in);
+        if (!replacement || ['type','required','format'].some(key=>replacement[key]!==field[key])) throw new Error(`Scoped refresh changes saved ${id} ${field.name}`);
+      }
+      for (const field of newFields.filter(field=>field.required)) if (!oldFields.some(old=>old.name===field.name&&old.in===field.in&&old.required)) throw new Error(`Scoped refresh adds required ${id} ${field.name}`);
+    }
+    return next;
+  });
+  operations=[...existing.filter(operation=>!requested.includes(operation.id)),...selected].sort((a,b)=>a.id.localeCompare(b.id));
+  const refreshes=(previousSource.refreshes??[]).map(entry=>({...entry,operationIds:entry.operationIds.filter(id=>!requested.includes(id))})).filter(entry=>entry.operationIds.length);
+  refreshes.push({sha256:catalogSource.sha256,operationIds:[...requested].sort()});
+  catalogSource={...previousSource,count:operations.length,refreshes};
 }
 const output = `import type { ApiOperation } from '../types';\n\nexport const catalogSource = ${JSON.stringify(catalogSource)};\n\nexport const operations: ApiOperation[] = [\n${operations.map((operation) => `  ${JSON.stringify(operation)},`).join('\n')}\n];\n`;
 if (process.argv.includes('--check')) {

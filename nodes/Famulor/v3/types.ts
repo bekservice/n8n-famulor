@@ -26,7 +26,7 @@ export type ApiOperation = {
   description: string;
   tag: string;
   parameters: ApiField[];
-  body?: { required: boolean; description?: string; fields?: ApiField[] };
+  body?: { required: boolean; multipart?: boolean; description?: string; fields?: ApiField[] };
   binary?: boolean;
   binaryContentType?: string;
 };

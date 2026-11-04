@@ -5,12 +5,14 @@ import type { ApiField, ApiOperation } from './types';
 import { operations } from './generated/catalog';
 
 export function resourceFor({ field, operation }: { field: ApiField; operation: ApiOperation }): Resource | undefined {
+  if (field.name === 'id' && field.in === 'path' && operation.path === '/sms/connectors/{id}/send') return resources.find(resource => resource.path === '/messaging-connectors');
   if (field.name === 'id' && field.in === 'path') return resources.find((resource) => operation.path.startsWith(`${resource.path}/{id}`));
   return resources.find((resource) => resource.fields.includes(field.name));
 }
 
 function resourceLabel(record: Record<string, unknown>): string {
-  return String(record['name'] ?? record['shop_domain'] ?? record['number'] ?? record['phone'] ?? record['to_number'] ?? record['invitee_name'] ?? record['display_name'] ?? record['email'] ?? record['id']);
+  const profile = famulorApi.isRecord(record['profile']) ? record['profile'] : {};
+  return String(record['name'] ?? profile['name'] ?? record['shop_domain'] ?? record['number'] ?? record['phone'] ?? record['to_number'] ?? record['invitee_name'] ?? record['display_name'] ?? record['email'] ?? record['id']);
 }
 
 export async function resourceOptions({ context, resource, searchValue }: { context: ILoadOptionsFunctions; resource: Resource; searchValue?: string }) {
@@ -27,7 +29,7 @@ export async function resourceOptions({ context, resource, searchValue }: { cont
   const matches: { label: string; value: string }[] = [];
   let capped = false;
   for (let offset = 0; offset < 50000; offset += 100) {
-    const query = new URLSearchParams({ ...(resource.unpaged ? {} : { limit: '100', offset: String(offset) }), ...(search && searchParam ? { [searchParam]: search } : {}) });
+    const query = new URLSearchParams({ ...(resource.query ?? {}), ...(resource.unpaged ? {} : { limit: '100', offset: String(offset) }), ...(search && searchParam ? { [searchParam]: search } : {}) });
     const response = await famulorApi.request(context, { method: 'GET', path: `${resource.path}${query.size ? `?${query}` : ''}` });
     if (!famulorApi.isRecord(response)) throw new NodeOperationError(context.getNode(), 'Famulor returned an invalid resource list.');
     const data = response['data'];
@@ -45,6 +47,8 @@ export async function resourceOptions({ context, resource, searchValue }: { cont
 }
 
 export const resources: Resource[] = [
+  { path: '/sms/rcs/senders', label: 'Company Sender (RCS)', fields: ['rcs_sender_id'], unpaged: true, key: 'senders' },
+  { path: '/messaging-connectors', label: 'SMS Connection', fields: ['sms_connector_id'], unpaged: true, query: { platform: 'sms' } },
   { path: '/shopify/installations', label: 'Shopify Store', fields: ['installation_id'], unpaged: true },
   { path: '/assistants', label: 'Assistant', fields: ['assistant_id', 'fallback_assistant_id'] },
   { path: '/campaigns', label: 'Campaign', fields: ['campaign_id'] },
@@ -61,7 +65,7 @@ export const resources: Resource[] = [
   { path: '/routines', label: 'Mission', fields: ['routine_id'], unpaged: true },
 ];
 
-export type Resource = { path: string; label: string; fields: string[]; unpaged?: boolean; key?: string; detailKey?: string; searchParam?: string };
+export type Resource = { path: string; label: string; fields: string[]; unpaged?: boolean; key?: string; detailKey?: string; searchParam?: string; query?: Record<string, string> };
 
 export const resourceSearchMethods = Object.fromEntries(resources.map(resource => [resource.fields[0], async function(this: ILoadOptionsFunctions, filter?: string): Promise<INodeListSearchResult> {
   const result = await resourceOptions({context:this,resource,searchValue:filter});

@@ -36,8 +36,8 @@ function normalize({ field, value, node }: { field: ApiField; value: unknown; no
   if (field.type === 'object' && !isRecord(value)) throw new NodeOperationError(node, `${field.name} must be an object.`);
   if (field.type === 'string') {
     if (typeof value !== 'string') throw new NodeOperationError(node, `${field.name} must be text.`);
-    if (field.minLength !== undefined && value.length < field.minLength) throw new NodeOperationError(node, `${field.name} is too short.`);
-    if (field.maxLength !== undefined && value.length > field.maxLength) throw new NodeOperationError(node, `${field.name} is too long.`);
+    if (field.minLength !== undefined && Array.from(value).length < field.minLength) throw new NodeOperationError(node, `${field.name} is too short.`);
+    if (field.maxLength !== undefined && Array.from(value).length > field.maxLength) throw new NodeOperationError(node, `${field.name} is too long.`);
   }
   return value;
 }
@@ -124,7 +124,7 @@ function failureHint(status: number | undefined, path: string): string {
   return 'Check inputs, workspace permissions, scopes and credit limits.';
 }
 
-export async function request(context: RequestContext, options: { method: IHttpRequestMethods; path: string; body?: unknown; headers?: Record<string, string>; binary?: boolean; credentialType?: string; allowNotFound?: boolean }): Promise<unknown> {
+export async function request(context: RequestContext, options: { method: IHttpRequestMethods; path: string; body?: unknown; headers?: Record<string, string>; binary?: boolean; multipart?: boolean; credentialType?: string; allowNotFound?: boolean }): Promise<unknown> {
   const node = context.getNode();
   if (!/^\/[a-z0-9]/i.test(options.path) || /[\\#]/.test(options.path) || options.path.split('?')[0].split('/').some(part => part === '.' || part === '..')) throw new NodeOperationError(node, 'Invalid public API path.');
   const credentials = await context.getCredentials(options.credentialType ?? 'famulorApi');
@@ -132,13 +132,14 @@ export async function request(context: RequestContext, options: { method: IHttpR
   const requestOptions: IHttpRequestOptions = {
     url, method: options.method, headers: options.headers, body: options.body as IHttpRequestOptions['body'],
     disableFollowRedirect: true, timeout: 60000, returnFullResponse: true,
-    json: !options.binary, encoding: options.binary ? 'arraybuffer' : 'json',
+    json: !options.binary && !options.multipart, encoding: options.binary ? 'arraybuffer' : 'json',
   };
   try {
     const response: unknown = await context.helpers.httpRequestWithAuthentication.call(context, options.credentialType ?? 'famulorApi', requestOptions);
     if (!isRecord(response) || typeof response.statusCode !== 'number') throw new NodeOperationError(node, 'Famulor returned an invalid HTTP response.');
     if (response.statusCode === 404 && options.allowNotFound) return null;
     if (response.statusCode < 200 || response.statusCode >= 300) throw new NodeOperationError(node, `HTTP ${response.statusCode}`, { description: failureHint(response.statusCode, options.path) });
+    if (options.multipart && typeof response.body === 'string') { try { return JSON.parse(response.body); } catch { throw new NodeOperationError(node,'Famulor returned an invalid upload response.'); } }
     return options.binary ? response : response.body;
   } catch (error: unknown) {
     if (options.allowNotFound && httpStatus(error) === 404) return null;

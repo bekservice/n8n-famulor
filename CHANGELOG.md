@@ -1,3 +1,11 @@
+## 2.5.0 — 2026-11-04
+
+- Add company sender applications, brand asset upload, verification refresh and sending from an SMS connection.
+- Existing SMS sends keep their number selection and required inputs. Delivery mode, rich RCS content and explicit SMS fallback text are optional additions.
+- Allow explicit incoming RCS default routing on connector create/update; preserve true and false choices. Plain-text SMS fallback uses the original message.
+- Add searchable company sender and SMS connection selections. SMS conversation events continue to include RCS in the same channel.
+- Update the community package to use these operations after publication; npm publication and Creator Portal approval remain separate.
+
 # 2.4.0
 
 - Refresh the catalog to 501 API operations. New automation actions: folders (`listAutomationFolders`, `createAutomationFolder`, `updateAutomationFolder`, `deleteAutomationFolder`), keyless export and import (`exportAutomation`, `importAutomation`), share links (`shareAutomation`, `getAutomationShare`, `revokeAutomationShare`, `importSharedAutomation`), built-in templates (`listAutomationTemplates`, `getAutomationTemplate`, `useAutomationTemplate`) and `duplicateAutomation`. `listAutomations` filters by `folder_id`; `createAutomation` and `updateAutomation` accept `folder_id`. Imports, shares and templates always create drafts without keys or connections.
