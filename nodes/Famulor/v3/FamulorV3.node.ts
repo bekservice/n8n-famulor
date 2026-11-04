@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NodeConnectionTypes } from '../connections';
 import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
@@ -35,7 +36,30 @@ export class FamulorV3 implements INodeType {
           }
         }
         const request = famulorV3Api.buildRequest({operation,values,node:this.getNode()});
-        const response = await famulorV3Api.request(this,{...request,method: operation.method as 'GET'|'POST'|'PATCH'|'PUT'|'DELETE',binary:operation.binary});
+        if (operation.body?.multipart) {
+          const boundary = `famulor-${randomUUID()}`;
+          const fields = famulorV3Api.isRecord(request.body) ? request.body : {};
+          const chunks: Buffer[] = [];
+          for (const [name,value] of Object.entries(fields)) {
+            if (!/^[a-zA-Z0-9_]+$/.test(name)) throw new NodeOperationError(this.getNode(),'Invalid upload field.');
+            const field = operation.body.fields?.find(field=>field.name===name);
+            if (field?.format === 'binary') {
+              const key=String(value); const file=items[index].binary?.[key];
+              if (!file) throw new NodeOperationError(this.getNode(),`Input binary field ${key} is missing.`);
+              const bytes=await this.helpers.getBinaryDataBuffer(index,key);
+              if (bytes.length>200_000) throw new NodeOperationError(this.getNode(),'The company image must not exceed 200,000 bytes.');
+              const filename=(file.fileName??'image').replace(/[\r\n"\\]/g,'_');
+              const mime=file.mimeType;
+              if (!['image/png','image/jpeg'].includes(mime)) throw new NodeOperationError(this.getNode(),'Use a PNG or JPEG company image.');
+              chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="${filename}"\r\nContent-Type: ${mime}\r\n\r\n`),bytes,Buffer.from('\r\n'));
+            } else chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${typeof value==='object'?JSON.stringify(value):String(value)}\r\n`));
+          }
+          chunks.push(Buffer.from(`--${boundary}--\r\n`));
+          const bytes=Buffer.concat(chunks);
+          if (bytes.length>300_000) throw new NodeOperationError(this.getNode(),'The company image upload is too large.');
+          request.body=bytes; request.headers['Content-Type']=`multipart/form-data; boundary=${boundary}`;
+        }
+        const response = await famulorV3Api.request(this,{...request,method: operation.method as 'GET'|'POST'|'PATCH'|'PUT'|'DELETE',binary:operation.binary,multipart:operation.body?.multipart});
         if (operation.binary) {
           if (!famulorV3Api.isRecord(response) || !Buffer.isBuffer(response.body)) throw new NodeOperationError(this.getNode(),'Famulor returned invalid file data.');
           const headers=famulorV3Api.isRecord(response.headers)?response.headers:{};

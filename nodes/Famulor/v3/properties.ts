@@ -22,7 +22,8 @@ function fieldProperty(field: ApiField, name: string, operation: ApiOperation): 
     const locator: {modes: INodePropertyMode[]} = {modes:[{displayName:'From List',name:'list',type:'list',typeOptions:{searchListMethod:resource.fields[0],searchable:true}},{displayName:'By ID',name:'id',type:'string'}]};
     prop.modes=locator.modes;
   }
-  if (field.writeOnly) prop.typeOptions = { ...prop.typeOptions, password: true };
+  if (operation.body?.multipart && field.format === 'binary') { prop.displayName = `${title(field.name)} Input Binary Field`; prop.default = 'data'; prop.description = 'Name of the input item binary field containing the file'; }
+  if (field.writeOnly && prop.type === 'string') prop.typeOptions = { ...prop.typeOptions, password: true };
   return prop;
 }
 

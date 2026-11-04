@@ -9,6 +9,8 @@ import { FamulorV3 } from '../nodes/Famulor/v3/FamulorV3.node';
 import { operations,catalogSource } from '../nodes/Famulor/v3/generated/catalog';
 import { operationProperties } from '../nodes/Famulor/v3/properties';
 import { famulorV3Api,safeBaseUrl } from '../nodes/Famulor/v3/client';
+import { resourceFor, resourceOptions, resources } from '../nodes/Famulor/v3/resources';
+import type { ILoadOptionsFunctions } from 'n8n-workflow';
 import type { ApiField } from '../nodes/Famulor/v3/types';
 
 const node=new FamulorV3();
@@ -26,6 +28,21 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
+ it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
+  assert.equal(baseline.length,501);
+  for(const saved of baseline){
+   const current=operations.find(operation=>operation.id===saved.id);assert.ok(current,saved.id);
+   for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],`${saved.id}: ${key}`);
+   const fields=[...current.parameters,...(current.body?.fields??[])];
+   for(const old of saved.fields){
+    const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
+    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+   }
+   for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
+  }
+ });
+
  it('retains all published v2.1.1 action routes and saved input field names and types',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.1.1-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:{name:string;in?:string;type:string;required:boolean}[]}[];
   assert.equal(baseline.length,423);
@@ -67,11 +84,11 @@ describe('native API actions',()=>{
   ctx.helpers.prepareBinaryData=async(body)=>{received=body as Buffer;return {data:'fixture',mimeType:'video/webm',fileName:'file.webm'};};
   const result=await node.execute.call(ctx);assert.deepEqual(received,bytes);assert.equal(result[0][0].binary?.data.mimeType,'video/webm');
  });
- it('registers 501 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,501);assert.equal(catalogSource.count,501);
+ it('registers 509 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,509);assert.equal(catalogSource.count,509);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,501);
-  assert.equal(new Set(operations.map(operation=>operation.id)).size,501);
+  assert.equal(choices.length,509);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,509);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
@@ -85,7 +102,7 @@ describe('native API actions',()=>{
   assert.deepEqual(requests[0].body,{assistant_id:uuid,to_number:'+4915123456789',phone_number_id:uuid,lead:{name:'Legacy'}});
   assert.deepEqual(result,[[{json:{id:'saved-call'},pairedItem:{item:0}}]]);
  });
- for(const operation of operations)it(`${operation.id}: executes the registered action with actual n8n builder defaults`,async()=>{
+ for(const operation of operations.filter(operation=>!operation.body?.multipart))it(`${operation.id}: executes the registered action with actual n8n builder defaults`,async()=>{
   const required:Record<string,unknown>={resource:operation.tag,operation:operation.id};
   for(const field of operation.parameters.filter(field=>field.required))required[`${field.in}_${field.name}`]=sample(field);
   for(const field of operation.body?.fields?.filter(field=>field.required)??[])required[`body_${field.name}`]=sample(field);
@@ -193,4 +210,41 @@ describe('native API actions',()=>{
   const operation=operations.find(op=>op.id==='getCall')!;
   for(const path of ['..','../me','%2e%2e','x/y'])assert.throws(()=>famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{path_id:path}}));
  });
+});
+
+
+describe('SMS with optional RCS',()=>{
+ it('uploads real multipart bytes from an input binary field without JSON encoding',async()=>{
+  const operation=operations.find(operation=>operation.id==='uploadSmsRcsAsset')!;
+  assert.equal(operation.body?.multipart,true);
+  const requests:IHttpRequestOptions[]=[];
+  const ctx=context({resource:operation.tag,operation:operation.id,body_kind:'logo',body_file:'brand'},async request=>{
+   requests.push(request);return {statusCode:201,body:'{"data":{"url":"https://example.com/logo.png"}}'};
+  });
+  ctx.getInputData=()=>[{json:{},binary:{brand:{data:'',mimeType:'image/png',fileName:'logo.png'}}}];
+  ctx.helpers.getBinaryDataBuffer=async()=>Buffer.from([137,80,78,71]);
+  const result=await node.execute.call(ctx);
+  assert.equal(requests.length,1);assert.equal(requests[0].json,false);
+  const body=requests[0].body;assert.ok(Buffer.isBuffer(body));
+  assert.ok(body.includes(Buffer.from([137,80,78,71])));assert.ok(body.includes(Buffer.from('name="kind"\r\n\r\nlogo')));
+  assert.match(String(requests[0].headers?.['Content-Type']),/^multipart\/form-data; boundary=famulor-/);
+  assert.equal(result[0][0].json.url,'https://example.com/logo.png');
+ });
+ it('resolves company names and SMS connection selections through their real list envelopes',async()=>{
+  const sender=resources.find(resource=>resource.path==='/sms/rcs/senders')!;
+  const ctx=context({},async request=>{
+   assert.match(request.url,/\/sms\/rcs\/senders$/);return {statusCode:200,body:{data:{senders:[{id:uuid,profile:{name:'Example'}}]}}};
+  }) as unknown as ILoadOptionsFunctions;
+  assert.deepEqual(await resourceOptions({context:ctx,resource:sender}),{options:[{label:`Example (${uuid})`,value:uuid}]});
+  const send=operations.find(operation=>operation.id==='sendSmsFromConnector')!;
+  assert.equal(resourceFor({operation:send,field:send.parameters[0]})?.path,'/messaging-connectors');
+ });
+});
+
+
+it('preserves explicit true and false incoming RCS default choices as optional connector fields',async()=>{
+ const operation=operations.find(operation=>operation.id==='updateMessagingConnector')!;
+ const requests:IHttpRequestOptions[]=[];
+ for(const choice of [true,false])await node.execute.call(context({resource:operation.tag,operation:operation.id,path_id:uuid,optionalFields:{body_rcs_default_connector:choice}},async request=>{requests.push(request);return {statusCode:200,body:{data:{id:uuid}}};}));
+ assert.deepEqual(requests.map(request=>request.body),[{rcs_default_connector:true},{rcs_default_connector:false}]);
 });

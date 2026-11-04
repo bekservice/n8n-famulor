@@ -1,3 +1,12 @@
+## 2.6.0 — 2026-11-04
+
+- Add company sender applications, brand asset upload, verification refresh and sending from an SMS connection.
+- Preserve the complete 501-action 2.5.0 contract, including editing unused customer payment links and its scoped generator mode. Add immutable saved-input coverage for that baseline.
+- Existing SMS sends keep their number selection and required inputs. Delivery mode, rich RCS content and explicit SMS fallback text are optional additions.
+- Allow explicit incoming RCS default routing on connector create/update; preserve true and false choices. Plain-text SMS fallback uses the original message.
+- Add searchable company sender and SMS connection selections. SMS conversation events continue to include RCS in the same channel.
+- Update the community package to use these operations after publication; npm publication and Creator Portal approval remain separate.
+
 # 2.5.0
 
 - Edit an unused customer payment link with the optional `replace_payment_id` field on Create Platform Custom Payment. Existing workflows keep their saved inputs.
