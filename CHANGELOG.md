@@ -1,3 +1,8 @@
+## 2.8.0 — 2026-11-06
+
+- Choose recipient countries from the workspace availability returned by List Company Senders. Draft and Update Company Sender accept multiple country codes in the existing optional Countries input.
+- Book Company Sender Setup accepts the reviewed draft’s update time as an optional concurrency check. Existing country mappings, booking inputs and operation IDs stay compatible.
+
 ## 2.7.0 — 2026-11-05
 
 - Add an action to permanently delete ended or canceled native bookings by explicit ID. The action reports deleted and skipped bookings separately. Existing workflow inputs stay compatible.
