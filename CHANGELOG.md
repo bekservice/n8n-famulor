@@ -1,3 +1,8 @@
+## 2.7.0 — 2026-11-05
+
+- List Facebook Pages with a Facebook Business Login code and complete the Messenger connection using the selected Page's short-lived reference.
+- Saved Messenger workflows retain their existing access-token input. Update the community package after publication to use Business Login.
+
 ## 2.6.0 — 2026-11-04
 
 - Add company sender applications, brand asset upload, verification refresh and sending from an SMS connection.
