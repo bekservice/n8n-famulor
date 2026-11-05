@@ -232,12 +232,39 @@ describe('SMS with optional RCS',()=>{
  });
  it('resolves company names and SMS connection selections through their real list envelopes',async()=>{
   const sender=resources.find(resource=>resource.path==='/sms/rcs/senders')!;
+  const data={senders:[{id:uuid,profile:{name:'Example'},countries:['DE','AT']}],countries:['DE','AT'],default_country:'AT',pending_countries:['US']};
   const ctx=context({},async request=>{
-   assert.match(request.url,/\/sms\/rcs\/senders$/);return {statusCode:200,body:{data:{senders:[{id:uuid,profile:{name:'Example'}}]}}};
+   assert.match(request.url,/\/sms\/rcs\/senders$/);return {statusCode:200,body:{data}};
   }) as unknown as ILoadOptionsFunctions;
   assert.deepEqual(await resourceOptions({context:ctx,resource:sender}),{options:[{label:`Example (${uuid})`,value:uuid}]});
+  const list=await node.execute.call(context({resource:'SMS',operation:'listSmsRcsSenders'},async request=>{
+   assert.equal(request.method,'GET');assert.match(request.url,/\/sms\/rcs\/senders$/);return {statusCode:200,body:{data}};
+  }));
+  assert.deepEqual(list[0][0].json,data);
   const send=operations.find(operation=>operation.id==='sendSmsFromConnector')!;
   assert.equal(resourceFor({operation:send,field:send.parameters[0]})?.path,'/messaging-connectors');
+ });
+ it('keeps saved draft and booking mappings and passes new optional RCS country and review inputs',async()=>{
+  const senderPath=`/sms/rcs/senders/${uuid}`;
+  const profile={name:'Example'};
+  const updatedAt='2026-11-06T10:00:00Z';
+  const cases=[
+   {operation:'createSmsRcsSender',method:'POST',path:'/sms/rcs/senders',inputs:{body_profile:JSON.stringify(profile),optionalFields:{body_countries:'["DE"]'}},body:{profile,countries:['DE']}},
+   {operation:'updateSmsRcsSender',method:'PATCH',path:senderPath,inputs:{path_id:uuid,body_profile:JSON.stringify(profile),body_details:'{}',optionalFields:{body_countries:'["DE","AT"]'}},body:{profile,details:{},countries:['DE','AT']}},
+   {operation:'updateSmsRcsSender',method:'PATCH',path:senderPath,inputs:{path_id:uuid,body_profile:JSON.stringify(profile),body_details:'{}'},body:{profile,details:{}}},
+   {operation:'submitSmsRcsSender',method:'POST',path:`${senderPath}/submit`,inputs:{path_id:uuid,body_confirmed_setup_credits:500},body:{confirmed_setup_credits:500}},
+   {operation:'submitSmsRcsSender',method:'POST',path:`${senderPath}/submit`,inputs:{path_id:uuid,body_confirmed_setup_credits:500,optionalFields:{body_expected_updated_at:updatedAt}},body:{confirmed_setup_credits:500,expected_updated_at:updatedAt}},
+  ];
+  for(const {operation,method,path,inputs,body} of cases){
+   const requests:IHttpRequestOptions[]=[];
+   await node.execute.call(context({resource:'SMS',operation,...inputs},async request=>{
+    requests.push(request);return {statusCode:200,body:{data:{id:uuid}}};
+   }));
+   assert.equal(requests.length,1);
+   assert.equal(requests[0].method,method);
+   assert.equal(requests[0].url,`https://app.famulor.io/api/v1${path}`);
+   assert.deepEqual(requests[0].body,body);
+  }
  });
 });
 
