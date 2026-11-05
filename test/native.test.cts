@@ -84,11 +84,11 @@ describe('native API actions',()=>{
   ctx.helpers.prepareBinaryData=async(body)=>{received=body as Buffer;return {data:'fixture',mimeType:'video/webm',fileName:'file.webm'};};
   const result=await node.execute.call(ctx);assert.deepEqual(received,bytes);assert.equal(result[0][0].binary?.data.mimeType,'video/webm');
  });
- it('registers 509 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,509);assert.equal(catalogSource.count,509);
+ it('registers 510 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,510);assert.equal(catalogSource.count,510);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,509);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,509);
+  assert.equal(choices.length,510);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,510);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
