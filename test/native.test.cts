@@ -27,6 +27,12 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
  return {getInputData:()=>Array.from({length:count},()=>({json:{}})),getNodeParameter:(name:string,_index:number,fallback:unknown)=>Object.hasOwn(params,name)?params[name]:fallback,getCredentials:async()=>({apiKey:'test-key',baseUrl:'https://app.famulor.io'}),getNode:()=>({name:'Famulor',typeVersion:3}),continueOnFail:()=>fail,helpers:{httpRequestWithAuthentication:async function(_name:string,options:IHttpRequestOptions){return send(options);},prepareBinaryData:async(_body:Buffer,fileName:string,mimeType:string)=>({data:'test',mimeType,fileName})}} as unknown as IExecuteFunctions;
 }
 
+function expectedSavedRequired(operationId: string, field: {name: string; required: boolean}): boolean {
+ return operationId === 'listMessengerFacebookPages' && field.name === 'access_token'
+  ? false
+  : field.required;
+}
+
 describe('native API actions',()=>{
  it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
@@ -37,7 +43,8 @@ describe('native API actions',()=>{
    const fields=[...current.parameters,...(current.body?.fields??[])];
    for(const old of saved.fields){
     const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
-    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    for(const key of ['type','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    assert.equal(field.required,expectedSavedRequired(saved.id,old),`${saved.id}: ${old.name} required`);
    }
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
@@ -73,9 +80,29 @@ describe('native API actions',()=>{
    const current=operations.find(op=>op.id===saved.id)!;assert.ok(current,saved.id);
    for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],saved.id+': '+key);
    const fields=[...current.parameters,...current.body?.fields??[]];
-   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assert.equal(field.required,previous.required);}
+   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assert.equal(field.required,expectedSavedRequired(saved.id,previous));}
    for(const field of fields.filter(f=>f.required))assert.ok(saved.fields.some(f=>f.name===field.name&&f.in===field.in&&f.required),saved.id+': new required field '+field.name);
   }
+ });
+ it('keeps saved Messenger token inputs and supports the Business Login Page selection',async()=>{
+  const list = {resource:'Messaging',operation:'listMessengerFacebookPages'};
+  const requests: unknown[] = [];
+  const send = async (req: IHttpRequestOptions) => {
+   requests.push(req.body);
+   return {statusCode:200,body:{data:{pages:[{id:'123',name:'Support',page_selection:'opaque-selection'}]}}};
+  };
+  await node.execute.call(context({...list,body_access_token:'saved-facebook-token'},send));
+  const result = await node.execute.call(context({...list,optionalFields:{body_code:'facebook-code'}},send));
+  const selected = (result[0][0].json.pages as {page_selection: string}[])[0];
+  await node.execute.call(context({
+   resource:'Messaging',operation:'completeMessengerFacebookLogin',
+   body_assistant_id:uuid,body_page_id:'123',optionalFields:{body_page_selection:selected.page_selection},
+  },send));
+  assert.deepEqual(requests,[
+   {access_token:'saved-facebook-token'},
+   {code:'facebook-code'},
+   {assistant_id:uuid,page_id:'123',page_selection:'opaque-selection'},
+  ]);
  });
  for(const id of ['getCallBrowserRecording','getMessagingBrowserRecording'])it(id+': returns exact video bytes as a file',async()=>{
   const operation=operations.find(op=>op.id===id)!;

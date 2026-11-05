@@ -27,7 +27,12 @@ function field(schemaInput) {
 
 function bodyFields(input) {
   const schema = dereference(input) ?? {};
-  if (schema.oneOf || schema.anyOf || !schema.properties) return undefined;
+  const variants = schema.oneOf ?? schema.anyOf ?? [];
+  // If the variants only require different named inputs, keep those inputs
+  // available in the UI. The API validates which combination was sent.
+  if (!schema.properties || variants.some(variant =>
+    Object.keys(variant).length !== 1 || !Array.isArray(variant.required)
+  )) return undefined;
   return Object.entries(schema.properties).filter(([, value]) => !dereference(value).readOnly).map(([name, value]) => ({
     name, required: (schema.required ?? []).includes(name), ...field(value),
   }));
@@ -116,7 +121,12 @@ if (refreshIndex !== -1) {
       const newFields=[...next.parameters,...(next.body?.fields??[])];
       for (const field of oldFields) {
         const replacement=newFields.find(next=>next.name===field.name&&next.in===field.in);
-        if (!replacement || ['type','required','format'].some(key=>replacement[key]!==field[key])) throw new Error(`Scoped refresh changes saved ${id} ${field.name}`);
+        const acceptsLoginCode = id === 'listMessengerFacebookPages' && field.name === 'access_token' &&
+          field.required && replacement?.required === false && next.body?.fields?.some(input => input.name === 'code');
+        if (!replacement || replacement.type !== field.type || replacement.format !== field.format ||
+            (replacement.required !== field.required && !acceptsLoginCode)) {
+          throw new Error(`Scoped refresh changes saved ${id} ${field.name}`);
+        }
       }
       for (const field of newFields.filter(field=>field.required)) if (!oldFields.some(old=>old.name===field.name&&old.in===field.in&&old.required)) throw new Error(`Scoped refresh adds required ${id} ${field.name}`);
     }
