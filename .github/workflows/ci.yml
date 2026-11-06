@@ -25,4 +25,5 @@ jobs:
       - run: npm test
       - run: node templates/test.mjs
       - run: node templates/test-support.mjs
+      - run: node templates/test-channels.mjs
       - run: npm pack --dry-run
