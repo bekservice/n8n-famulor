@@ -1,3 +1,7 @@
+## 2.7.1 — 2026-11-06
+
+- Add an optional Pinned field to Create and Update Dashboard. Use false to remove a workspace Home shortcut. Saved workflows keep their existing inputs.
+
 ## 2.7.0 — 2026-11-05
 
 - Add an action to permanently delete ended or canceled native bookings by explicit ID. The action reports deleted and skipped bookings separately. Existing workflow inputs stay compatible.
