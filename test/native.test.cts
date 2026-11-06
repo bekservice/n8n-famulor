@@ -28,6 +28,16 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
+ it('offers the AssemblyAI speech provider on both assistant update actions',()=>{
+  for(const id of ['updateAssistant','replaceAssistant']){
+   const action=operations.find(operation=>operation.id===id);
+   assert.ok(action);
+   const field=action.body?.fields?.find(item=>item.name==='tts_provider');
+   assert.deepEqual(field?.enum, ['cartesia','elevenlabs','openai','google','azure','fishaudio','deepgram','inworld','rime','xai','gradium','assemblyai']);
+   assert.equal(field?.required,false);
+  }
+ });
+
  it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
   assert.equal(baseline.length,501);
