@@ -1,3 +1,9 @@
+## 2.9.0 — 2026-11-12
+
+- Add 23 actions from the current public API: launch a campaign now or at a scheduled time (with the required compliance confirmation and an optional check that the reviewed sequence is unchanged), pause, resume, cancel a scheduled start, duplicate, and per-contact campaign analytics; app action tools (create, get, update, test) and the app actions of a connected app; US federal and state do-not-call checks; Cal.com accounts (sign-in link, list, disconnect) and their event types; company sender test numbers; plan usage; permanent deletion of Audience contacts; cancelling a CRM sync run; adding an address to a number verification.
+- Refresh 22 existing actions without changing saved inputs. Create and Update Campaign accept call sequences, number pools, contact time zones, holidays and double dial. Start Campaign accepts the optional compliance confirmation; saved nodes still send no body. Ask Milian accepts `effort`, List Voices filters by `translation`, List History accepts the QA result `not_scorable`, and Submit Company Sender accepts `expected_updated_at`. Suppression, tool, QA, usage-rate, number purchase and verification actions use the current descriptions.
+- Add immutable saved-input coverage for all 510 actions of 2.8.0. Update to `n8n-nodes-famulor@2.9.0` after publication; npm publication and Creator Portal approval remain separate.
+
 ## 2.8.0 — 2026-11-10
 
 - Add the optional `direction` filter (`outbound`, `inbound`, `both`) to List Suppression Entries. Add Suppression Entry accepts `direction` in its request body: `inbound` blocks incoming calls and messages from that phone or email, `both` blocks both directions. Without it, entries stay outbound opt-outs as before.

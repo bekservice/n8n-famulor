@@ -1,6 +1,6 @@
 # Famulor for n8n
 
-Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **509 native actions**, **32 polling events** and **five signed webhook events**.
+Official community package for the [Famulor workspace API](https://docs.famulor.io/api-reference/introduction): **533 native actions**, **32 polling events** and **five signed webhook events**.
 
 Package: `n8n-nodes-famulor` · Maintained by **BEK Service GmbH (@bekservice)** · [Famulor](https://app.famulor.io) · [Integration guide](https://docs.famulor.io/automations/n8n)
 
@@ -117,11 +117,15 @@ node scripts/generate-catalog.mjs path/to/openapi.json --add-operations newOpera
 
 Replace `newOperationId` with an operation not already in this catalog, and omit `--check` to add it. Additive mode rejects unknown or duplicate IDs and any replacement of an existing operation. Metadata keeps the original full-catalog SHA and records the source SHA plus operation IDs for each additive selection; it does not claim the entire latest specification was imported. The generator also retains `--add-optional-fields` for adding only optional inputs to an existing operation, and `--refresh-operations` for a reviewed scoped refresh that preserves saved routes, field names, types and requiredness. These scoped modes preserve unrelated operation descriptors.
 
-Tests protect all 501 upstream 2.5.0 operation inputs and execute all 509 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
+Tests protect all 501 upstream 2.5.0 and 510 saved 2.8.0 operation inputs and execute all 533 registered native choices with actual n8n builder defaults, every polling event's baseline/emission/deduplication path, all signed webhook event choices, selectors, pagination failures, optional-input behavior and saved-node version routing against mocked HTTP. These tests do not start real calls, send messages, purchase resources or alter customer workspaces.
 
 Release by pushing the reviewed commit and a matching version tag. The existing **Publish** GitHub Actions workflow installs the lockfile, builds, lints, tests, and publishes the package with npm provenance. npm publication and n8n Creator Portal verification are separate outcomes.
 
 The linter uses the unmodified official `@n8n/node-cli` strict configuration. The official scanner checks both shipped source and compiled output before publication. The CommonJS test harness uses `.cts` files and is compiled/executed separately; it is not part of the Cloud node runtime. Build scripts invoke the package’s pinned TypeScript compiler directly so scanner tooling cannot replace it through a conflicting `tsc` binary.
+
+## Campaign launch and analytics
+
+Use **Campaigns → Launch a campaign** to start a draft campaign now or at a later `start_at`. Launching requires `compliance_attestation: true`: you confirm that the campaign complies with the laws and consent rules for the contacts being called. Map `sequence_hash` unchanged from **Get a campaign** to refuse a launch when the call sequence changed after you reviewed it. **Pause a campaign**, **Resume a campaign**, **Cancel a campaign's schedule** and **Get campaign analytics** use the same campaign selection. Saved **Start a campaign** nodes keep sending no body; a sequence campaign that was never launched is refused with the API's message until it is launched.
 
 ## SMS with optional RCS
 

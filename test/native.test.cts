@@ -84,11 +84,25 @@ describe('native API actions',()=>{
   ctx.helpers.prepareBinaryData=async(body)=>{received=body as Buffer;return {data:'fixture',mimeType:'video/webm',fileName:'file.webm'};};
   const result=await node.execute.call(ctx);assert.deepEqual(received,bytes);assert.equal(result[0][0].binary?.data.mimeType,'video/webm');
  });
- it('registers 510 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,510);assert.equal(catalogSource.count,510);
+ it('preserves all 510 saved 2.8.0 action routes and input names, types and requiredness',()=>{
+  const baseline=JSON.parse(readFileSync('test/fixtures/v2.8.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
+  assert.equal(baseline.length,510);
+  for(const saved of baseline){
+   const current=operations.find(operation=>operation.id===saved.id);assert.ok(current,saved.id);
+   for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],`${saved.id}: ${key}`);
+   const fields=[...current.parameters,...(current.body?.fields??[])];
+   for(const old of saved.fields){
+    const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
+    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+   }
+   for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
+  }
+ });
+ it('registers 533 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,533);assert.equal(catalogSource.count,533);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,510);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,510);
+  assert.equal(choices.length,533);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,533);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
@@ -247,4 +261,30 @@ it('preserves explicit true and false incoming RCS default choices as optional c
  const requests:IHttpRequestOptions[]=[];
  for(const choice of [true,false])await node.execute.call(context({resource:operation.tag,operation:operation.id,path_id:uuid,optionalFields:{body_rcs_default_connector:choice}},async request=>{requests.push(request);return {statusCode:200,body:{data:{id:uuid}}};}));
  assert.deepEqual(requests.map(request=>request.body),[{rcs_default_connector:true},{rcs_default_connector:false}]);
+});
+
+describe('Campaign Dialer actions',()=>{
+ it('launches with the compliance confirmation, a schedule and the reviewed sequence version',async()=>{
+  const operation=operations.find(operation=>operation.id==='launchCampaign')!;
+  assert.equal(resourceFor({operation,field:operation.parameters[0]})?.path,'/campaigns');
+  const requests:IHttpRequestOptions[]=[];
+  await node.execute.call(context({resource:operation.tag,operation:operation.id,path_id:{mode:'id',value:uuid},body_compliance_attestation:true,optionalFields:{body_start_at:'2026-11-20T09:00:00+01:00',body_sequence_hash:'abc123'}},async request=>{requests.push(request);return {statusCode:200,body:{data:{campaign_id:uuid,status:'scheduled'}}};}));
+  assert.equal(requests[0].method,'POST');assert.equal(new URL(requests[0].url).pathname,`/api/v1/campaigns/${uuid}/launch`);
+  assert.deepEqual(requests[0].body,{compliance_attestation:true,start_at:'2026-11-20T09:00:00+01:00',sequence_hash:'abc123'});
+ });
+ it('keeps a saved Start Campaign without a body and pauses or resumes by campaign',async()=>{
+  const requests:IHttpRequestOptions[]=[];
+  const send=async(request:IHttpRequestOptions)=>{requests.push(request);return {statusCode:200,body:{data:{campaign_id:uuid,status:'running'}}};};
+  await node.execute.call(context({resource:'Campaigns',operation:'startCampaign',path_id:uuid},send));
+  await node.execute.call(context({resource:'Campaigns',operation:'pauseCampaign',path_id:uuid},send));
+  await node.execute.call(context({resource:'Campaigns',operation:'resumeCampaign',path_id:uuid,optionalFields:{body_compliance_attestation:true}},send));
+  assert.deepEqual(requests.map(request=>[new URL(request.url).pathname,request.body]),[[`/api/v1/campaigns/${uuid}/start`,undefined],[`/api/v1/campaigns/${uuid}/pause`,undefined],[`/api/v1/campaigns/${uuid}/resume`,{compliance_attestation:true}]]);
+ });
+ it('reads campaign analytics for a period without sending a body',async()=>{
+  const requests:IHttpRequestOptions[]=[];
+  await node.execute.call(context({resource:'Campaigns',operation:'getCampaignAnalytics',path_id:uuid,optionalFields:{query_from:'2026-11-01',query_to:'2026-11-08'}},async request=>{requests.push(request);return {statusCode:200,body:{data:{available:true,kpis:{dialed:3}}}};}));
+  const url=new URL(requests[0].url);
+  assert.equal(url.pathname,`/api/v1/campaigns/${uuid}/analytics`);assert.equal(url.searchParams.get('from'),'2026-11-01');assert.equal(url.searchParams.get('to'),'2026-11-08');
+  assert.equal(requests[0].body,undefined);
+ });
 });
