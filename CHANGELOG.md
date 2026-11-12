@@ -1,3 +1,9 @@
+## 2.8.0 — 2026-11-10
+
+- Add the optional `direction` filter (`outbound`, `inbound`, `both`) to List Suppression Entries. Add Suppression Entry accepts `direction` in its request body: `inbound` blocks incoming calls and messages from that phone or email, `both` blocks both directions. Without it, entries stay outbound opt-outs as before.
+- Refresh only these two suppression actions with the scoped generator mode. Existing workflows keep their saved inputs; the New Suppression Entry event now includes each entry's direction.
+- Update the community package to use the inbound block after publication; npm publication and Creator Portal approval remain separate.
+
 ## 2.7.0 — 2026-11-05
 
 - Add an action to permanently delete ended or canceled native bookings by explicit ID. The action reports deleted and skipped bookings separately. Existing workflow inputs stay compatible.
