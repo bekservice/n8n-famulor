@@ -98,11 +98,11 @@ describe('native API actions',()=>{
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
  });
- it('registers 533 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,533);assert.equal(catalogSource.count,533);
+ it('registers 535 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,535);assert.equal(catalogSource.count,535);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,533);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,533);
+  assert.equal(choices.length,535);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,535);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);

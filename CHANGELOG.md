@@ -1,3 +1,8 @@
+## 2.10.0 — 2026-11-16
+
+- Read and update automatic blocking after calls. Switching it off skips post-call opt-out detection; existing blocks remain active. Existing workflow inputs are unchanged.
+- Update to `n8n-nodes-famulor@2.10.0` after publication. npm publication and Creator Portal approval are separate.
+
 ## 2.9.0 — 2026-11-12
 
 - Add 23 actions from the current public API: launch a campaign now or at a scheduled time (with the required compliance confirmation and an optional check that the reviewed sequence is unchanged), pause, resume, cancel a scheduled start, duplicate, and per-contact campaign analytics; app action tools (create, get, update, test) and the app actions of a connected app; US federal and state do-not-call checks; Cal.com accounts (sign-in link, list, disconnect) and their event types; company sender test numbers; plan usage; permanent deletion of Audience contacts; cancelling a CRM sync run; adding an address to a number verification.
