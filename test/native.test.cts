@@ -28,6 +28,13 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
 }
 
 describe('native API actions',()=>{
+ it('offers the dashboard pin option on create and update',()=>{
+  for(const id of ['createDashboard','updateDashboard']){
+   const action=operations.find(operation=>operation.id===id);assert.ok(action,id);
+   const field=action.body?.fields?.find(item=>item.name==='pinned');assert.ok(field,id+': pinned');
+   assert.equal(field.type,'boolean');assert.equal(field.required,false);
+  }
+ });
  it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
   assert.equal(baseline.length,501);
