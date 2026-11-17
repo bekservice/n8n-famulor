@@ -1,3 +1,7 @@
+## 2.10.2 — 2026-11-17
+
+- Add the optional `pinned` dashboard field so Create and Update Dashboard can pin a dashboard to the workspace Home shortcuts.
+
 ## 2.10.0 — 2026-11-16
 
 - Read and update automatic blocking after calls. Switching it off skips post-call opt-out detection; existing blocks remain active. Existing workflow inputs are unchanged.
