@@ -85,6 +85,10 @@ function buildRequest({ operation, values, node }: { operation: ApiOperation; va
         const value = named === undefined ? extra?.[field.name] : named;
         return [field.name, normalize({ field, value, node })];
       }).filter(([, value]) => value !== undefined));
+      if (operation.id === 'submitPhoneNumberVerification' && (fields.type ?? 'local') === 'local' &&
+          !(typeof fields.prefix === 'string' && fields.prefix.trim())) {
+        throw new NodeOperationError(node, 'Enter the area code for local numbers (for example, 01 for Vienna).');
+      }
       body = { ...(extra ?? {}), ...fields };
       if (!operation.body.required && Object.keys(body as Record<string, unknown>).length === 0) body = undefined;
     } else body = normalize({ field: { name: 'Request body', required: operation.body.required, type: 'json' }, value: values['body'], node });

@@ -1,3 +1,7 @@
+## 2.10.3 — 2026-11-17
+
+- Require the area code (Prefix) for local phone-number verification and keep the saved Prefix input at its original position in existing workflows. Mobile and national submissions remain unchanged.
+
 ## 2.10.0 — 2026-11-16
 
 - Read and update automatic blocking after calls. Switching it off skips post-call opt-out detection; existing blocks remain active. Existing workflow inputs are unchanged.

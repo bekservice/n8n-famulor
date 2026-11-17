@@ -51,6 +51,28 @@ it('scoped refresh adds optional fields and multipart operations while refusing 
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 
+it('scoped body-field updates preserve saved descriptors and conditional requirements', () => {
+ const root=mkdtempSync(join(tmpdir(),'famulor-field-'));
+ try {
+  mkdirSync(join(root,'scripts'));mkdirSync(join(root,'nodes/Famulor/v3/generated'),{recursive:true});
+  const script=join(root,'scripts/generate-catalog.mjs');copyFileSync('scripts/generate-catalog.mjs',script);
+  const spec=join(root,'openapi.json');const catalog=join(root,'nodes/Famulor/v3/generated/catalog.ts');
+  const original={id:'originalOperation',method:'GET',path:'/original',summary:'Saved label',description:'Saved contract',tag:'Workspace',parameters:[]};
+  const stored={id:'newOperation',method:'POST',path:'/new',summary:'New',description:'New',tag:'Workspace',parameters:[],body:{required:true,fields:[{name:'type',type:'string',required:false},{name:'prefix',type:'string',required:true}]}};
+  writeFileSync(catalog,`export const catalogSource = {"url":"https://example.test/spec","sha256":"original-spec","count":2};\nexport const operations = [\n  ${JSON.stringify(original)},\n  ${JSON.stringify(stored)},\n];\n`);
+  const conditional={type:'object',properties:{type:{type:'string',description:'Unrelated change'},prefix:{type:'string'}},allOf:[{if:{properties:{type:{const:'local'}}},then:{required:['prefix']}}]};
+  writeFileSync(spec,JSON.stringify({paths:{'/original':{get:{operationId:'originalOperation',summary:'Unrelated edit'}},'/new':{post:{operationId:'newOperation',summary:'New',requestBody:{content:{'application/json':{schema:conditional}}}}}}}));
+  const update=(field:string,check=false)=>spawnSync(process.execPath,[script,spec,'--update-body-field',field,...(check?['--check']:[])],{encoding:'utf8'});
+  assert.notEqual(update('newOperation.unknown').status,0);
+  assert.equal(update('newOperation.prefix').status,0);
+  const updated=readFileSync(catalog,'utf8');
+  assert.ok(updated.includes(JSON.stringify(original)));
+  assert.ok(updated.includes('"name":"prefix","required":false,"type":"string"'));
+  assert.ok(updated.includes('"fieldUpdates":{"newOperation.prefix":'));
+  assert.equal(update('newOperation.prefix',true).status,0);
+ } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
 it('offers replacement by payment ID on the existing custom-payment action', () => {
  const source=readFileSync(join(process.cwd(),'nodes/Famulor/v3/generated/catalog.ts'),'utf8');
  const line=source.split('\n').find((entry)=>entry.startsWith('  {"id":"createPlatformCustomPayment"'));
