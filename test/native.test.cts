@@ -35,6 +35,81 @@ describe('native API actions',()=>{
    assert.ok(field.enum?.includes('assemblyai'),id+': assemblyai');
   }
  });
+ it('uses one Twilio token field and keeps the saved carrier credential payloads', async () => {
+  const operation = operations.find(candidate => candidate.id === 'createCarrierConnection');
+  assert.ok(operation);
+  const properties = operationProperties(operation);
+  const tokenField = properties.find(property => property.name === 'twilioAuthToken');
+  assert.ok(tokenField);
+  assert.equal(tokenField.typeOptions?.password, true);
+  assert.deepEqual(tokenField.displayOptions?.show?.body_carrier, ['twilio']);
+  const savedOptions = properties.find(property => property.name === 'optionalFields')?.options;
+  for (const name of ['body_auth_token', 'body_regional_auth_token']) {
+   const field = savedOptions?.find(option => 'name' in option && option.name === name);
+   assert.ok(field && 'type' in field);
+   assert.equal(field.type, 'hidden');
+  }
+
+  const accountSid = 'AC00000000000000000000000000000001';
+  const usToken = 'us1-token-fixture';
+  const regionalToken = 'regional-token-fixture';
+  const cases = [
+   {
+    inputs: { optionalFields: { body_account_sid: accountSid, body_auth_token: usToken } },
+    expected: { account_sid: accountSid, auth_token: usToken },
+   },
+   {
+    inputs: {
+     optionalFields: { body_account_sid: accountSid, body_twilio_voice_region: 'ie1' },
+     twilioAuthToken: regionalToken,
+    },
+    expected: { account_sid: accountSid, twilio_voice_region: 'ie1', regional_auth_token: regionalToken },
+   },
+   {
+    inputs: {
+     optionalFields: {
+      body_account_sid: accountSid,
+      body_auth_token: usToken,
+      body_regional_auth_token: regionalToken,
+      body_twilio_voice_region: 'ie1',
+      body_sip_region: 'global',
+     },
+    },
+    expected: {
+     account_sid: accountSid, auth_token: usToken, regional_auth_token: regionalToken,
+     twilio_voice_region: 'ie1', sip_region: 'global',
+    },
+   },
+   {
+    inputs: {
+     optionalFields: { body_source_connection_id: uuid, body_twilio_voice_region: 'au1' },
+     twilioAuthToken: regionalToken,
+    },
+    expected: { source_connection_id: uuid, twilio_voice_region: 'au1', regional_auth_token: regionalToken },
+   },
+   {
+    inputs: { optionalFields: { body_source_connection_id: uuid }, twilioAuthToken: usToken },
+    expected: { source_connection_id: uuid, auth_token: usToken },
+   },
+  ];
+
+  for (const { inputs, expected } of cases) {
+   const saved = {
+    resource: operation.tag, operation: operation.id, body_name: 'Office', body_carrier: 'twilio', ...inputs,
+   } as INodeParameters;
+   const defaults = NodeHelpers.getNodeParameters(node.description.properties, saved, true, false, { typeVersion: 3 }, node.description);
+   assert.ok(defaults);
+   const requests: IHttpRequestOptions[] = [];
+   await node.execute.call(context(defaults, async request => {
+    requests.push(request);
+    return { statusCode: 201, body: { data: { id: uuid } } };
+   }));
+   assert.equal(requests.length, 1);
+   assert.equal(requests[0].url, 'https://app.famulor.io/api/v1/carrier-connections');
+   assert.deepEqual(requests[0].body, { name: 'Office', carrier: 'twilio', ...expected });
+  }
+ });
+
  it('preserves all 501 upstream 2.5.0 action routes and saved input names, types and requiredness',()=>{
   const baseline=JSON.parse(readFileSync('test/fixtures/v2.5.0-action-inputs.json','utf8')) as {id:string;tag:string;method:string;path:string;fields:ApiField[]}[];
   assert.equal(baseline.length,501);
