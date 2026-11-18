@@ -1,3 +1,7 @@
+## 2.11.0 — 2026-11-18
+
+- Choose the Twilio voice region and reuse an existing Twilio account in the Create Carrier Connection action.
+
 ## 2.10.1 — 2026-11-17
 
 - Offer `assemblyai` as an `tts_provider` on Update and Replace Assistant so workflows can use the current speech provider catalog.
