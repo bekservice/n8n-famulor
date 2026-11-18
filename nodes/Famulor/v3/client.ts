@@ -85,8 +85,16 @@ function buildRequest({ operation, values, node }: { operation: ApiOperation; va
         const value = named === undefined ? extra?.[field.name] : named;
         return [field.name, normalize({ field, value, node })];
       }).filter(([, value]) => value !== undefined));
-      body = { ...(extra ?? {}), ...fields };
-      if (!operation.body.required && Object.keys(body as Record<string, unknown>).length === 0) body = undefined;
+      const requestBody = { ...(extra ?? {}), ...fields };
+      if (operation.id === 'createCarrierConnection' && requestBody.carrier === 'twilio') {
+        const token = values.twilioAuthToken;
+        if (typeof token === 'string' && token.trim()) {
+          const region = requestBody.twilio_voice_region;
+          const key = region === 'ie1' || region === 'au1' ? 'regional_auth_token' : 'auth_token';
+          requestBody[key] = token;
+        }
+      }
+      if (operation.body.required || Object.keys(requestBody).length > 0) body = requestBody;
     } else body = normalize({ field: { name: 'Request body', required: operation.body.required, type: 'json' }, value: values['body'], node });
   }
   return { path: `${path}${query.size ? `?${query}` : ''}`, headers, body };

@@ -1,3 +1,8 @@
+## 2.11.1 — 2026-11-18
+
+- Enter one Twilio Auth Token for the selected voice region in Create Carrier Connection. Ireland and Australia can connect with their regional token alone. Saved workflows keep their existing credential inputs.
+- Update to `n8n-nodes-famulor@2.11.1` after publication. npm publication and Creator Portal approval are separate.
+
 ## 2.11.0 — 2026-11-18
 
 - Choose the Twilio voice region and reuse an existing Twilio account in the Create Carrier Connection action.

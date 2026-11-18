@@ -24,6 +24,10 @@ function fieldProperty(field: ApiField, name: string, operation: ApiOperation): 
   }
   if (operation.body?.multipart && field.format === 'binary') { prop.displayName = `${title(field.name)} Input Binary Field`; prop.default = 'data'; prop.description = 'Name of the input item binary field containing the file'; }
   if (field.writeOnly && prop.type === 'string') prop.typeOptions = { ...prop.typeOptions, password: true };
+  if (operation.id === 'createCarrierConnection' && ['auth_token', 'regional_auth_token'].includes(field.name)) {
+    // Keep previously saved values in the collection for request assembly.
+    prop.type = 'hidden';
+  }
   return prop;
 }
 
@@ -36,7 +40,18 @@ export function isLegacyTopLevelField(operation: ApiOperation, name: string): bo
 export function operationProperties(operation: ApiOperation): INodeProperties[] {
   const fields = [...operation.parameters.map(field => ({ field, name: `${field.in}_${field.name}` })), ...(operation.body?.fields ?? []).map(field => ({ field, name: `body_${field.name}` }))];
   const show = { resource: [operation.tag], operation: [operation.id] };
-  const required = fields.filter(({field,name}) => field.required || isLegacyTopLevelField(operation,name)).map(({field,name}) => ({ ...fieldProperty(field,name,operation), displayOptions: {show} }));
+  const required: INodeProperties[] = fields.filter(({field,name}) => field.required || isLegacyTopLevelField(operation,name)).map(({field,name}) => ({ ...fieldProperty(field,name,operation), displayOptions: {show} }));
+  if (operation.id === 'createCarrierConnection') {
+    required.push({
+      displayName: 'Twilio Auth Token',
+      name: 'twilioAuthToken',
+      type: 'string',
+      typeOptions: { password: true },
+      default: '',
+      description: 'Auth Token for the Twilio Voice Region selected in Optional Fields. Use US1 by default. For US1, leave this blank if the source connection already has a US1 token.',
+      displayOptions: { show: { ...show, body_carrier: ['twilio'] } },
+    });
+  }
   if (['getCreditNotificationPreferences','updateCreditNotificationPreferences'].includes(operation.id)) required.unshift({displayName:'Personal low-credit warnings require a user-owned credential. Service-account API keys cannot read or change them. You can manage personal warnings in Famulor Settings.',name:'personalCredentialNotice',type:'notice',default:'',displayOptions:{show}});
   const optional = fields.filter(({field,name}) => !field.required && !isLegacyTopLevelField(operation,name)).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));
   if (operation.body && !operation.body.fields && !operation.body.required) optional.push({displayName:'Request Body',name:'body',type:'json',default:'{}',description:operation.body.description || 'Optional JSON request body'});
