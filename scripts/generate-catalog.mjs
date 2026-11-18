@@ -116,7 +116,14 @@ if (refreshIndex !== -1) {
       const newFields=[...next.parameters,...(next.body?.fields??[])];
       for (const field of oldFields) {
         const replacement=newFields.find(next=>next.name===field.name&&next.in===field.in);
-        if (!replacement || ['type','required','format'].some(key=>replacement[key]!==field[key])) throw new Error(`Scoped refresh changes saved ${id} ${field.name}`);
+        // PATCH now accepts only the fields being changed. Its legacy required
+        // keys remain at the top level of a saved node (see properties.ts).
+        const isBookingPatchRelaxation = id === 'updateBookingEventType'
+          && !field.in && field.required && replacement?.required === false;
+        if (!replacement || ['type', 'format'].some(key => replacement[key] !== field[key])
+          || (replacement.required !== field.required && !isBookingPatchRelaxation)) {
+          throw new Error(`Scoped refresh changes saved ${id} ${field.name}`);
+        }
       }
       for (const field of newFields.filter(field=>field.required)) if (!oldFields.some(old=>old.name===field.name&&old.in===field.in&&old.required)) throw new Error(`Scoped refresh adds required ${id} ${field.name}`);
     }

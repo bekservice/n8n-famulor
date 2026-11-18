@@ -7,7 +7,7 @@ import { Famulor } from '../nodes/Famulor/Famulor.node';
 import { FamulorTrigger } from '../nodes/Famulor/FamulorTrigger.node';
 import { FamulorV3 } from '../nodes/Famulor/v3/FamulorV3.node';
 import { operations,catalogSource } from '../nodes/Famulor/v3/generated/catalog';
-import { operationProperties } from '../nodes/Famulor/v3/properties';
+import { isLegacyTopLevelField, operationProperties } from '../nodes/Famulor/v3/properties';
 import { famulorV3Api,safeBaseUrl } from '../nodes/Famulor/v3/client';
 import { resourceFor, resourceOptions, resources } from '../nodes/Famulor/v3/resources';
 import type { ILoadOptionsFunctions } from 'n8n-workflow';
@@ -27,7 +27,64 @@ function context(params:Record<string,unknown>,send:(options:IHttpRequestOptions
  return {getInputData:()=>Array.from({length:count},()=>({json:{}})),getNodeParameter:(name:string,_index:number,fallback:unknown)=>Object.hasOwn(params,name)?params[name]:fallback,getCredentials:async()=>({apiKey:'test-key',baseUrl:'https://app.famulor.io'}),getNode:()=>({name:'Famulor',typeVersion:3}),continueOnFail:()=>fail,helpers:{httpRequestWithAuthentication:async function(_name:string,options:IHttpRequestOptions){return send(options);},prepareBinaryData:async(_body:Buffer,fileName:string,mimeType:string)=>({data:'test',mimeType,fileName})}} as unknown as IExecuteFunctions;
 }
 
+// A former requirement may be relaxed if its saved parameter key stays at
+// the top level and a new node can omit it without changing the request body.
+function assertSavedRequiredness(operation: typeof operations[number], before: ApiField, after: ApiField) {
+ const name = `${before.in ?? 'body'}_${before.name}`;
+ if (operation.id === 'updateBookingEventType' && before.required && !after.required && isLegacyTopLevelField(operation, name)) {
+  const property = operationProperties(operation).find(option => option.name === name);
+  assert.ok(property);
+  assert.equal(property.default, '');
+  return;
+ }
+ assert.equal(after.required, before.required, `${operation.id}: ${before.name} requiredness`);
+}
+
 describe('native API actions',()=>{
+ it('discovers booking holidays and sends policy-only updates without losing saved inputs', async () => {
+  const path = 'https://app.famulor.io/api/v1';
+  const calls: IHttpRequestOptions[] = [];
+  const send = async (request: IHttpRequestOptions) => {
+   calls.push(request);
+   return { statusCode: 200, body: { data: { id: uuid } } };
+  };
+  const policy = { country_code: 'AT', subdivision_code: 'AT-NÖ', overrides: { 'optional:christmas-eve': true } };
+  await node.execute.call(context({
+   resource: 'Bookings', operation: 'getBookingHolidayCatalog',
+   optionalFields: { query_country_code: 'AT', query_subdivision_code: 'AT-NÖ', query_locale: 'de' },
+  }, send));
+  assert.equal(calls[0].method, 'GET');
+  const catalogUrl = new URL(calls[0].url);
+  assert.equal(catalogUrl.pathname, '/api/v1/booking-holidays');
+  assert.equal(catalogUrl.searchParams.get('subdivision_code'), 'AT-NÖ');
+  for (const example of [
+   { saved: {}, holiday: JSON.stringify(policy), expected: { public_holidays: policy } },
+   { saved: {}, holiday: 'null', expected: { public_holidays: null } },
+   {
+    saved: {
+     body_name: 'Consultation', body_slug: 'consultation', body_duration_min: 30,
+     body_timezone: 'Europe/Vienna', body_availability: '{"mon":[{"start":"09:00","end":"17:00"}]}',
+    },
+    holiday: undefined,
+    expected: {
+     name: 'Consultation', slug: 'consultation', duration_min: 30, timezone: 'Europe/Vienna',
+     availability: { mon: [{ start: '09:00', end: '17:00' }] },
+    },
+   },
+  ]) {
+   const params = {
+    resource: 'Bookings', operation: 'updateBookingEventType', path_id: uuid, ...example.saved,
+    ...(example.holiday === undefined ? {} : { optionalFields: { body_public_holidays: example.holiday } }),
+   } as INodeParameters;
+   const withDefaults = NodeHelpers.getNodeParameters(node.description.properties, params, true, false, { typeVersion: 3 }, node.description);
+   assert.ok(withDefaults);
+   await node.execute.call(context(withDefaults, send));
+   const request = calls.at(-1)!;
+   assert.equal(request.method, 'PATCH');
+   assert.equal(request.url, `${path}/booking-event-types/${uuid}`);
+   assert.deepEqual(request.body, example.expected);
+  }
+ });
  it('offers the AssemblyAI speech provider on both assistant update actions',()=>{
   for(const id of ['updateAssistant','replaceAssistant']){
    const action=operations.find(operation=>operation.id===id);assert.ok(action,id);
@@ -119,7 +176,8 @@ describe('native API actions',()=>{
    const fields=[...current.parameters,...(current.body?.fields??[])];
    for(const old of saved.fields){
     const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
-    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    for(const key of ['type','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    assertSavedRequiredness(current,old,field);
    }
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
@@ -155,7 +213,7 @@ describe('native API actions',()=>{
    const current=operations.find(op=>op.id===saved.id)!;assert.ok(current,saved.id);
    for(const key of ['tag','method','path'] as const)assert.equal(current[key],saved[key],saved.id+': '+key);
    const fields=[...current.parameters,...current.body?.fields??[]];
-   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assert.equal(field.required,previous.required);}
+   for(const previous of saved.fields){const field=fields.find(f=>f.name===previous.name&&f.in===previous.in)!;assert.ok(field,saved.id+': '+previous.name);assert.equal(field.type,previous.type);assertSavedRequiredness(current,previous,field);}
    for(const field of fields.filter(f=>f.required))assert.ok(saved.fields.some(f=>f.name===field.name&&f.in===field.in&&f.required),saved.id+': new required field '+field.name);
   }
  });
@@ -175,16 +233,17 @@ describe('native API actions',()=>{
    const fields=[...current.parameters,...(current.body?.fields??[])];
    for(const old of saved.fields){
     const field=fields.find(next=>next.name===old.name&&next.in===old.in);assert.ok(field,`${saved.id}: ${old.name}`);
-    for(const key of ['type','required','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    for(const key of ['type','format'] as const)assert.equal(field[key],old[key],`${saved.id}: ${old.name} ${key}`);
+    assertSavedRequiredness(current,old,field);
    }
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
  });
- it('registers 535 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,535);assert.equal(catalogSource.count,535);
+ it('registers 536 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,536);assert.equal(catalogSource.count,536);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,535);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,535);
+  assert.equal(choices.length,536);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,536);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);
