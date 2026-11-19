@@ -41,6 +41,21 @@ function assertSavedRequiredness(operation: typeof operations[number], before: A
 }
 
 describe('native API actions',()=>{
+ it('requires the observed switch revision when restoring Twilio routing', async () => {
+  const operation = operations.find(op => op.id === 'restoreTwilioRegion')!;
+  const revision = '00000000-0000-4000-8000-000000000002';
+  const params = { resource: operation.tag, operation: operation.id, path_id: uuid, path_numberId: uuid };
+  const calls: IHttpRequestOptions[] = [];
+  const send = async (req: IHttpRequestOptions) => {
+   calls.push(req);
+   return {statusCode: 200, body: {data: {status: 'restored', cleanup_pending: true, switch_revision: revision}}};
+  };
+  await assert.rejects(node.execute.call(context(params, send)), /switch_revision/);
+  assert.equal(calls.length, 0);
+  await node.execute.call(context({...params, query_switch_revision: revision}, send));
+  assert.equal(calls[0].method, 'DELETE');
+  assert.equal(new URL(calls[0].url).searchParams.get('switch_revision'), revision);
+ });
  it('switches Twilio regions using only the saved target login or the selected encrypted credential', async () => {
   const operation = operations.find(op => op.id === 'switchTwilioRegion')!;
   const properties = JSON.stringify(operationProperties(operation));

@@ -1,6 +1,6 @@
 ## 2.13.0 — 2026-11-19
 
-- Preview, switch and restore the Twilio voice region of an imported number in Carrier Connections. Use the saved target login, or enable the SIP login stored in your Famulor API credential. After restoring, check `cleanup_pending` and repeat Restore after calls drain if cleanup remains pending.
+- Preview, switch and restore the Twilio voice region of an imported number in Carrier Connections. Use the saved target login, or enable the SIP login stored in your Famulor API credential. Pass the `switch_revision` from Preview or Switch to Restore. If `cleanup_pending` is true, repeat Restore with that revision after calls drain.
 - After publication, update your community node to `n8n-nodes-famulor@2.13.0`.
 
 ## 2.12.0 — 2026-11-19
