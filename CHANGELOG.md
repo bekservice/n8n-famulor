@@ -1,3 +1,8 @@
+## 2.15.0 — 2026-11-20
+
+- In **Carrier Connections → Switch the region of an imported Twilio number**, choose **Create Secure Trunk** and use the Managed Token from the preview to switch incoming and outgoing routing. The action uses the saved Twilio connection. Existing workflows keep their current trunk, direction and SIP login inputs.
+- After publication, update your community node to `n8n-nodes-famulor@2.15.0`.
+
 ## 2.14.0 — 2026-11-19
 
 - Filter **Avatars → Browse avatar library** by a standard style or a named style from the catalog response. Existing style values in saved workflows continue to work.

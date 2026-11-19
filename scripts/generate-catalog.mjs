@@ -25,8 +25,29 @@ function field(schemaInput) {
   }).filter(([, value]) => value !== undefined));
 }
 
-function bodyFields(input) {
+function bodyFields(input, operationId) {
   const schema = dereference(input) ?? {};
+  if (operationId === 'switchTwilioRegion' && schema.oneOf) {
+    const branches = schema.oneOf.map(dereference);
+    const existing = branches.find(branch => branch.properties?.mode?.enum?.includes('existing'));
+    const managed = branches.find(branch => branch.properties?.mode?.enum?.includes('managed'));
+    const existingFields = existing && bodyFields(existing);
+    const managedFields = managed && bodyFields(managed);
+    const managedToken = managedFields?.find(entry => entry.name === 'managed_token' && entry.required);
+    const managedDirection = managedFields?.find(entry => entry.name === 'direction' && entry.required);
+    if (!existingFields || !managedToken || JSON.stringify(managedDirection?.enum) !== '["bidirectional"]'
+      || !managedFields.some(entry => entry.name === 'mode' && entry.required)) {
+      throw new Error('Unexpected Twilio region switch input. Preserve both supported modes.');
+    }
+    // The existing branch retains saved top-level keys. The managed token is
+    // required only when the user selects that mode.
+    return [
+      ...existingFields.map(entry => entry.name === 'mode'
+        ? { ...entry, enum: ['existing', 'managed'], default: 'existing' }
+        : entry),
+      { ...managedToken, required: false },
+    ];
+  }
   if (schema.oneOf || schema.anyOf || !schema.properties) return undefined;
   return Object.entries(schema.properties).filter(([, value]) => !dereference(value).readOnly).map(([name, value]) => ({
     name, required: (schema.required ?? []).includes(name), ...field(value),
@@ -54,7 +75,7 @@ let operations = Object.entries(spec.paths).flatMap(([path, pathItem]) =>
       })),
       ...(requestBody ? { body: {
         required: requestBody.required === true, ...(multipart ? { multipart: true } : {}), description: dereference(jsonSchema)?.description,
-        fields: bodyFields(jsonSchema),
+        fields: bodyFields(jsonSchema, operation.operationId),
       } } : {}),
       ...(responseFormats.some((format) => format.startsWith('audio/') || format.startsWith('video/')) ? { binary: true, binaryContentType: responseFormats.find(format => format.startsWith('audio/') || format.startsWith('video/')) } : {}),
     };

@@ -45,13 +45,16 @@ export function operationProperties(operation: ApiOperation): INodeProperties[] 
   const fields = [...operation.parameters.map(field => ({ field, name: `${field.in}_${field.name}` })), ...(operation.body?.fields ?? []).map(field => ({ field, name: `body_${field.name}` }))];
   const show = { resource: [operation.tag], operation: [operation.id] };
   const switchOperation = operation.id === 'switchTwilioRegion';
-  const visibleFields = switchOperation ? fields.filter(({ field }) => !field.writeOnly) : fields;
+  const existingSwitchFields = { show: { ...show, twilioRegionSwitchMode: ['existing'] } };
+  const visibleFields = switchOperation
+    ? fields.filter(({ field }) => !field.writeOnly && !['mode', 'managed_token'].includes(field.name))
+    : fields;
   const required: INodeProperties[] = visibleFields
     .filter(({ field, name }) => field.required || isLegacyTopLevelField(operation, name))
     .map(({ field, name }) => ({
       ...fieldProperty(field, name, operation),
       ...(!field.required && isLegacyTopLevelField(operation, name) ? { default: '' } : {}),
-      displayOptions: { show },
+      displayOptions: switchOperation && !field.in ? existingSwitchFields : { show },
     }));
   if (operation.id === 'createCarrierConnection') {
     required.push({
@@ -66,10 +69,29 @@ export function operationProperties(operation: ApiOperation): INodeProperties[] 
   }
   if (['getCreditNotificationPreferences','updateCreditNotificationPreferences'].includes(operation.id)) required.unshift({displayName:'Personal low-credit warnings require a user-owned credential. Service-account API keys cannot read or change them. You can manage personal warnings in Famulor Settings.',name:'personalCredentialNotice',type:'notice',default:'',displayOptions:{show}});
   if (switchOperation) {
+    const mode = operation.body?.fields?.find(field => field.name === 'mode');
+    const managedToken = operation.body?.fields?.find(field => field.name === 'managed_token');
+    if (mode && managedToken) {
+      required.unshift({
+        ...fieldProperty(mode, 'twilioRegionSwitchMode', operation),
+        displayName: 'Target Trunk',
+        description: 'Whether to use an existing trunk or create a secure trunk using the saved Twilio connection',
+        displayOptions: { show },
+        options: [
+          { name: 'Use Existing Trunk', value: 'existing' },
+          { name: 'Create Secure Trunk', value: 'managed' },
+        ],
+      });
+      required.push({
+        ...fieldProperty(managedToken, 'body_managed_token', operation),
+        required: true,
+        displayOptions: { show: { ...show, twilioRegionSwitchMode: ['managed'] } },
+      });
+    }
     required.push({
       displayName: 'Use SIP Login From Credential', name: 'useCredentialSipLogin', type: 'boolean', default: false,
       description: 'Whether to use the SIP username and password stored in this node’s Famulor API credential. Leave off to use the login confirmed by the preview.',
-      displayOptions: { show },
+      displayOptions: existingSwitchFields,
     });
   }
   const optional = visibleFields.filter(({field,name}) => !field.required && !isLegacyTopLevelField(operation,name)).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));

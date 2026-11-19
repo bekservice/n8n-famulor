@@ -26,29 +26,50 @@ export class FamulorV3 implements INodeType {
         const resource = this.getNodeParameter('resource',index) as string;
         const operation = operations.find(operation => operation.id === id && operation.tag === resource);
         if (!operation) throw new NodeOperationError(this.getNode(),'Select a valid Famulor resource and operation.');
-        const optional = this.getNodeParameter('optionalFields',index,{}) as Record<string,unknown>;
-        const values: Record<string,unknown> = {...optional};
-        for (const property of operationProperties(operation)) {
-          if (property.name !== 'optionalFields') {
-            const value = this.getNodeParameter(property.name,index,property.default);
-            if (isLegacyTopLevelField(operation,property.name) && value === '') continue;
-            values[property.name] = value;
-          }
+        const switchMode = id === 'switchTwilioRegion' ? this.getNodeParameter('twilioRegionSwitchMode',index,'existing') : undefined;
+        if (id === 'switchTwilioRegion' && switchMode !== 'existing' && switchMode !== 'managed') {
+          throw new NodeOperationError(this.getNode(), 'Choose an existing or new secure Twilio trunk.');
         }
+        const values: Record<string,unknown> = switchMode === 'managed'
+          ? {} : { ...this.getNodeParameter('optionalFields',index,{}) as Record<string,unknown> };
+        for (const property of operationProperties(operation)) {
+          const modes = property.displayOptions?.show?.twilioRegionSwitchMode;
+          if (property.name === 'optionalFields' || property.name === 'twilioRegionSwitchMode' || (modes && !modes.includes(switchMode as string))) continue;
+          const value = this.getNodeParameter(property.name,index,property.default);
+          if (isLegacyTopLevelField(operation,property.name) && value === '') continue;
+          values[property.name] = value;
+        }
+        let requestOperation = operation;
         if (id === 'switchTwilioRegion') {
           delete values.body_extra;
           delete values.body_sip_username;
           delete values.body_sip_password;
-          if (values.useCredentialSipLogin === true) {
-            const credentials = await this.getCredentials('famulorApi');
-            if (!credentials.sipUsername || !credentials.sipPassword) {
-              throw new NodeOperationError(this.getNode(), 'Configure both SIP login fields in the selected Famulor API credential.');
+          if (switchMode === 'managed') {
+            values.body_mode = 'managed';
+            values.body_direction = 'bidirectional';
+            requestOperation = {
+              ...operation,
+              body: {
+                required: true,
+                fields: operation.body?.fields
+                  ?.filter(field => ['mode','direction','managed_token'].includes(field.name))
+                  .map(field => ({ ...field, required: true })),
+              },
+            };
+          } else {
+            delete values.body_mode;
+            delete values.body_managed_token;
+            if (values.useCredentialSipLogin === true) {
+              const credentials = await this.getCredentials('famulorApi');
+              if (!credentials.sipUsername || !credentials.sipPassword) {
+                throw new NodeOperationError(this.getNode(), 'Configure both SIP login fields in the selected Famulor API credential.');
+              }
+              values.body_sip_username = credentials.sipUsername;
+              values.body_sip_password = credentials.sipPassword;
             }
-            values.body_sip_username = credentials.sipUsername;
-            values.body_sip_password = credentials.sipPassword;
           }
         }
-        const request = famulorV3Api.buildRequest({operation,values,node:this.getNode()});
+        const request = famulorV3Api.buildRequest({operation:requestOperation,values,node:this.getNode()});
         if (operation.body?.multipart) {
           const boundary = `famulor-${randomUUID()}`;
           const fields = famulorV3Api.isRecord(request.body) ? request.body : {};
