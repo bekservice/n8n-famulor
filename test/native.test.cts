@@ -62,9 +62,15 @@ describe('native API actions',()=>{
   for (const key of ['body_extra', 'body_sip_username', 'body_sip_password']) assert.ok(!properties.includes(key));
   const params = {
    resource: operation.tag, operation: operation.id, path_id: uuid, path_numberId: uuid,
-   body_direction: 'outbound_only', body_trunk_token: 'preview-token',
+   body_direction: 'outbound_only', body_trunk_token: 'preview-token', body_mode: 'legacy-unrelated-input',
    optionalFields: { body_sip_password: 'untrusted', body_extra: '{"sip_username":"untrusted"}' },
   };
+  const saved = NodeHelpers.getNodeParameters(
+   node.description.properties, params as INodeParameters, true, false, { typeVersion: 3 }, node.description,
+  );
+  assert.equal(saved?.twilioRegionSwitchMode, 'existing');
+  assert.equal(saved?.body_direction, params.body_direction);
+  assert.equal(saved?.body_trunk_token, params.body_trunk_token);
   const body = { direction: 'outbound_only', trunk_token: 'preview-token' };
   for (const useCredentialSipLogin of [false, true]) {
    const calls: IHttpRequestOptions[] = [];
@@ -80,6 +86,43 @@ describe('native API actions',()=>{
   await assert.rejects(node.execute.call(context({...params, useCredentialSipLogin: true}, async () => {
    assert.fail('No network request for missing SIP credentials');
   })), /Configure both SIP login fields/);
+ });
+
+ it('uses the managed preview token without reading the saved existing-trunk inputs', async () => {
+  const operation = operations.find(op => op.id === 'switchTwilioRegion')!;
+  const properties = operationProperties(operation);
+  for (const name of ['body_direction', 'body_trunk_token', 'useCredentialSipLogin']) {
+   assert.deepEqual(properties.find(property => property.name === name)?.displayOptions?.show?.twilioRegionSwitchMode, ['existing']);
+  }
+  assert.deepEqual(properties.find(property => property.name === 'body_managed_token')?.displayOptions?.show?.twilioRegionSwitchMode, ['managed']);
+  assert.equal(properties.find(property => property.name === 'body_managed_token')?.required, true);
+
+  const common = { resource: operation.tag, path_id: uuid, path_numberId: uuid };
+  const calls: IHttpRequestOptions[] = [];
+  const send = async (request: IHttpRequestOptions) => {
+   calls.push(request);
+   return { statusCode: 200, body: { data: { managed_available: true, managed_token: 'managed-preview-token' } } };
+  };
+  const [preview] = await node.execute.call(context({ ...common, operation: 'previewTwilioRegionSwitch' }, send));
+  assert.equal(calls[0].method, 'GET');
+  const params = {
+   ...common, operation: operation.id, twilioRegionSwitchMode: 'managed', body_managed_token: preview[0].json.managed_token,
+   body_direction: 'outbound_only', body_trunk_token: 'previously-saved-token', useCredentialSipLogin: true,
+   optionalFields: { body_sip_username: 'untrusted', body_sip_password: 'untrusted', body_extra: '{"extra":true}' },
+  };
+  const ctx = context(params, send);
+  const get = ctx.getNodeParameter;
+  ctx.getNodeParameter = ((name: string, index: number, fallback: unknown) => {
+   assert.ok(!['body_direction', 'body_trunk_token', 'useCredentialSipLogin', 'optionalFields'].includes(name));
+   return get.call(ctx, name, index, fallback);
+  }) as typeof ctx.getNodeParameter;
+  await node.execute.call(ctx);
+  assert.equal(calls[1].method, 'POST');
+  assert.deepEqual(calls[1].body, { mode: 'managed', direction: 'bidirectional', managed_token: 'managed-preview-token' });
+
+  await assert.rejects(node.execute.call(context({ ...params, body_managed_token: '' }, async () => {
+   assert.fail('No network request for a missing managed token');
+  })), /managed_token/);
  });
 
  it('discovers booking holidays and sends policy-only updates without losing saved inputs', async () => {

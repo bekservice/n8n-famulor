@@ -61,3 +61,61 @@ it('offers replacement by payment ID on the existing custom-payment action', () 
  assert.equal(field.required,false);
  assert.equal(field.format,'uuid');
 });
+
+it('refreshes the Twilio switch union and preserves saved existing-trunk fields', () => {
+ const root = mkdtempSync(join(tmpdir(), 'famulor-twilio-catalog-'));
+ try {
+  mkdirSync(join(root, 'scripts'));
+  mkdirSync(join(root, 'nodes/Famulor/v3/generated'), { recursive: true });
+  const script = join(root, 'scripts/generate-catalog.mjs');
+  copyFileSync('scripts/generate-catalog.mjs', script);
+  const spec = join(root, 'openapi.json');
+  const catalog = join(root, 'nodes/Famulor/v3/generated/catalog.ts');
+  const operationId = 'switchTwilioRegion';
+  const path = '/carrier-connections/{id}/numbers/{numberId}/region-switch';
+  const baseline = {
+   id: operationId, method: 'POST', path, summary: 'Switch Twilio region', description: 'Saved', tag: 'Carrier Connections', parameters: [],
+   body: { required: true, fields: [
+    { name: 'direction', required: true, type: 'string', enum: ['outbound_only', 'bidirectional'] },
+    { name: 'trunk_token', required: true, type: 'string' },
+   ] },
+  };
+  writeFileSync(catalog, "export const catalogSource = {\"sha256\":\"old\",\"count\":1};\nexport const operations = [\n  " + JSON.stringify(baseline) + ",\n];\n");
+  const managed = {
+   required: ['mode', 'direction', 'managed_token'],
+   properties: {
+    mode: { type: 'string', enum: ['managed'] },
+    direction: { type: 'string', enum: ['bidirectional'] },
+    managed_token: { type: 'string', minLength: 1, maxLength: 4096 },
+   },
+  };
+  const schema = {
+   oneOf: [{
+    required: ['direction', 'trunk_token'],
+    properties: {
+     mode: { type: 'string', enum: ['existing'] },
+     direction: { type: 'string', enum: ['outbound_only', 'bidirectional'] },
+     trunk_token: { type: 'string' },
+    },
+   }, managed],
+  };
+  const document = { paths: { [path]: { post: {
+   operationId, tags: ['Carrier Connections'],
+   requestBody: { required: true, content: { 'application/json': { schema } } },
+  } } } };
+  writeFileSync(spec, JSON.stringify(document));
+  const run = () => spawnSync(process.execPath, [script, spec, '--refresh-operations', operationId], { encoding: 'utf8' });
+  const generation = run();
+  assert.equal(generation.status, 0, generation.stderr);
+  const generated = readFileSync(catalog, 'utf8');
+  assert.match(generated, /"name":"mode","required":false,"type":"string","enum":\["existing","managed"\],"default":"existing"/);
+  assert.match(generated, /"name":"managed_token","required":false,"type":"string","minLength":1,"maxLength":4096/);
+  assert.match(generated, /"name":"trunk_token","required":true/);
+  managed.properties.direction.enum = ['outbound_only'];
+  writeFileSync(spec, JSON.stringify(document));
+  assert.notEqual(run().status, 0);
+  assert.equal(readFileSync(catalog, 'utf8'), generated);
+ } finally {
+  rmSync(root, { recursive: true, force: true });
+ }
+});
