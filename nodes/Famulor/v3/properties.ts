@@ -31,16 +31,26 @@ function fieldProperty(field: ApiField, name: string, operation: ApiOperation): 
   return prop;
 }
 
-// This input was required in 2.1.1. Keep its saved top-level parameter even
-// though the API now also allows a hosted address without a custom domain.
+// Keep top-level parameter keys when the public API relaxes required fields.
+const bookingPatchFields = new Set([
+  'body_name', 'body_slug', 'body_duration_min', 'body_timezone', 'body_availability',
+]);
+
 export function isLegacyTopLevelField(operation: ApiOperation, name: string): boolean {
-  return operation.id === 'createEmailAddress' && name === 'body_domain_id';
+  return (operation.id === 'createEmailAddress' && name === 'body_domain_id')
+    || (operation.id === 'updateBookingEventType' && bookingPatchFields.has(name));
 }
 
 export function operationProperties(operation: ApiOperation): INodeProperties[] {
   const fields = [...operation.parameters.map(field => ({ field, name: `${field.in}_${field.name}` })), ...(operation.body?.fields ?? []).map(field => ({ field, name: `body_${field.name}` }))];
   const show = { resource: [operation.tag], operation: [operation.id] };
-  const required: INodeProperties[] = fields.filter(({field,name}) => field.required || isLegacyTopLevelField(operation,name)).map(({field,name}) => ({ ...fieldProperty(field,name,operation), displayOptions: {show} }));
+  const required: INodeProperties[] = fields
+    .filter(({ field, name }) => field.required || isLegacyTopLevelField(operation, name))
+    .map(({ field, name }) => ({
+      ...fieldProperty(field, name, operation),
+      ...(!field.required && isLegacyTopLevelField(operation, name) ? { default: '' } : {}),
+      displayOptions: { show },
+    }));
   if (operation.id === 'createCarrierConnection') {
     required.push({
       displayName: 'Twilio Auth Token',
