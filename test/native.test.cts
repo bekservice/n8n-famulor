@@ -41,6 +41,47 @@ function assertSavedRequiredness(operation: typeof operations[number], before: A
 }
 
 describe('native API actions',()=>{
+ it('requires the observed switch revision when restoring Twilio routing', async () => {
+  const operation = operations.find(op => op.id === 'restoreTwilioRegion')!;
+  const revision = '00000000-0000-4000-8000-000000000002';
+  const params = { resource: operation.tag, operation: operation.id, path_id: uuid, path_numberId: uuid };
+  const calls: IHttpRequestOptions[] = [];
+  const send = async (req: IHttpRequestOptions) => {
+   calls.push(req);
+   return {statusCode: 200, body: {data: {status: 'restored', cleanup_pending: true, switch_revision: revision}}};
+  };
+  await assert.rejects(node.execute.call(context(params, send)), /switch_revision/);
+  assert.equal(calls.length, 0);
+  await node.execute.call(context({...params, query_switch_revision: revision}, send));
+  assert.equal(calls[0].method, 'DELETE');
+  assert.equal(new URL(calls[0].url).searchParams.get('switch_revision'), revision);
+ });
+ it('switches Twilio regions using only the saved target login or the selected encrypted credential', async () => {
+  const operation = operations.find(op => op.id === 'switchTwilioRegion')!;
+  const properties = JSON.stringify(operationProperties(operation));
+  for (const key of ['body_extra', 'body_sip_username', 'body_sip_password']) assert.ok(!properties.includes(key));
+  const params = {
+   resource: operation.tag, operation: operation.id, path_id: uuid, path_numberId: uuid,
+   body_direction: 'outbound_only', body_trunk_token: 'preview-token',
+   optionalFields: { body_sip_password: 'untrusted', body_extra: '{"sip_username":"untrusted"}' },
+  };
+  const body = { direction: 'outbound_only', trunk_token: 'preview-token' };
+  for (const useCredentialSipLogin of [false, true]) {
+   const calls: IHttpRequestOptions[] = [];
+   const ctx = context({ ...params, useCredentialSipLogin }, async req => {
+    calls.push(req);
+    return {statusCode: 200, body: {data: {switched: true}}};
+   });
+   ctx.getCredentials = (async () => ({apiKey: 'test', sipUsername: 'fixture-user', sipPassword: 'fixture-secret'})) as typeof ctx.getCredentials;
+   const result = await node.execute.call(ctx);
+   assert.deepEqual(calls[0].body, useCredentialSipLogin ? {...body, sip_username: 'fixture-user', sip_password: 'fixture-secret'} : body);
+   assert.ok(!JSON.stringify(result).includes('fixture-secret'));
+  }
+  await assert.rejects(node.execute.call(context({...params, useCredentialSipLogin: true}, async () => {
+   assert.fail('No network request for missing SIP credentials');
+  })), /Configure both SIP login fields/);
+ });
+
  it('discovers booking holidays and sends policy-only updates without losing saved inputs', async () => {
   const path = 'https://app.famulor.io/api/v1';
   const calls: IHttpRequestOptions[] = [];
@@ -269,11 +310,11 @@ describe('native API actions',()=>{
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
  });
- it('registers 538 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,538);assert.equal(catalogSource.count,538);
+ it('registers 541 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,541);assert.equal(catalogSource.count,541);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,538);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,538);
+  assert.equal(choices.length,541);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,541);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);

@@ -44,7 +44,9 @@ export function isLegacyTopLevelField(operation: ApiOperation, name: string): bo
 export function operationProperties(operation: ApiOperation): INodeProperties[] {
   const fields = [...operation.parameters.map(field => ({ field, name: `${field.in}_${field.name}` })), ...(operation.body?.fields ?? []).map(field => ({ field, name: `body_${field.name}` }))];
   const show = { resource: [operation.tag], operation: [operation.id] };
-  const required: INodeProperties[] = fields
+  const switchOperation = operation.id === 'switchTwilioRegion';
+  const visibleFields = switchOperation ? fields.filter(({ field }) => !field.writeOnly) : fields;
+  const required: INodeProperties[] = visibleFields
     .filter(({ field, name }) => field.required || isLegacyTopLevelField(operation, name))
     .map(({ field, name }) => ({
       ...fieldProperty(field, name, operation),
@@ -63,10 +65,17 @@ export function operationProperties(operation: ApiOperation): INodeProperties[] 
     });
   }
   if (['getCreditNotificationPreferences','updateCreditNotificationPreferences'].includes(operation.id)) required.unshift({displayName:'Personal low-credit warnings require a user-owned credential. Service-account API keys cannot read or change them. You can manage personal warnings in Famulor Settings.',name:'personalCredentialNotice',type:'notice',default:'',displayOptions:{show}});
-  const optional = fields.filter(({field,name}) => !field.required && !isLegacyTopLevelField(operation,name)).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));
+  if (switchOperation) {
+    required.push({
+      displayName: 'Use SIP Login From Credential', name: 'useCredentialSipLogin', type: 'boolean', default: false,
+      description: 'Whether to use the SIP username and password stored in this node’s Famulor API credential. Leave off to use the login confirmed by the preview.',
+      displayOptions: { show },
+    });
+  }
+  const optional = visibleFields.filter(({field,name}) => !field.required && !isLegacyTopLevelField(operation,name)).map(({field,name}) => fieldProperty(field,name,operation)).sort((a,b) => a.displayName.localeCompare(b.displayName));
   if (operation.body && !operation.body.fields && !operation.body.required) optional.push({displayName:'Request Body',name:'body',type:'json',default:'{}',description:operation.body.description || 'Optional JSON request body'});
   if (optional.length) required.push({ displayName: 'Optional Fields', name: 'optionalFields', type: 'collection', placeholder: 'Add Field', default: {}, displayOptions: {show}, options: optional });
-  if (operation.body?.fields) required.push({ displayName: 'Additional Body Fields', name: 'body_extra', type: 'json', default: '{}', displayOptions: {show}, description: 'Additional documented fields as JSON. Named fields take precedence. Use explicit null, empty arrays or empty strings to clear supported fields' });
+  if (operation.body?.fields && !switchOperation) required.push({ displayName: 'Additional Body Fields', name: 'body_extra', type: 'json', default: '{}', displayOptions: {show}, description: 'Additional documented fields as JSON. Named fields take precedence. Use explicit null, empty arrays or empty strings to clear supported fields' });
   if (operation.body?.required && !operation.body.fields) required.push({ displayName: 'Request Body', name: 'body', type: 'json', default: '{}', required: operation.body.required || undefined, displayOptions: {show}, description: operation.body.description || 'JSON request body. Upload operations accept the documented URL or base64 alternatives' });
   return required;
 }

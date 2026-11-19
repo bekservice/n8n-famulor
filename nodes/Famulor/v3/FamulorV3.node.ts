@@ -35,6 +35,19 @@ export class FamulorV3 implements INodeType {
             values[property.name] = value;
           }
         }
+        if (id === 'switchTwilioRegion') {
+          delete values.body_extra;
+          delete values.body_sip_username;
+          delete values.body_sip_password;
+          if (values.useCredentialSipLogin === true) {
+            const credentials = await this.getCredentials('famulorApi');
+            if (!credentials.sipUsername || !credentials.sipPassword) {
+              throw new NodeOperationError(this.getNode(), 'Configure both SIP login fields in the selected Famulor API credential.');
+            }
+            values.body_sip_username = credentials.sipUsername;
+            values.body_sip_password = credentials.sipPassword;
+          }
+        }
         const request = famulorV3Api.buildRequest({operation,values,node:this.getNode()});
         if (operation.body?.multipart) {
           const boundary = `famulor-${randomUUID()}`;
