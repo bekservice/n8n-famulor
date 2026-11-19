@@ -25,6 +25,22 @@ export class FamulorApi implements ICredentialType {
 			required: true,
 		},
 		{
+			displayName: 'Twilio SIP Username',
+			name: 'sipUsername',
+			type: 'string',
+			typeOptions: { password: true },
+			default: '',
+			description: 'Optional SIP login used only when a Twilio region switch requests this credential',
+		},
+		{
+			displayName: 'Twilio SIP Password',
+			name: 'sipPassword',
+			type: 'string',
+			typeOptions: { password: true },
+			default: '',
+			description: 'Password for the optional Twilio SIP username',
+		},
+		{
 			displayName: 'Base URL',
 			name: 'baseUrl',
 			type: 'hidden',

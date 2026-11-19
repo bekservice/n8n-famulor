@@ -1,3 +1,8 @@
+## 2.13.0 — 2026-11-19
+
+- Preview, switch and restore the Twilio voice region of an imported number in Carrier Connections. Use the saved target login, or enable the SIP login stored in your Famulor API credential. After restoring, check `cleanup_pending` and repeat Restore after calls drain if cleanup remains pending.
+- After publication, update your community node to `n8n-nodes-famulor@2.13.0`.
+
 ## 2.12.0 — 2026-11-19
 
 - Find countries, subdivisions and holiday keys with **Bookings → Get the booking holiday catalog**. Set **Public Holidays** when creating or updating an event type. Use `null` to remove the policy.
