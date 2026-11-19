@@ -85,6 +85,36 @@ describe('native API actions',()=>{
    assert.deepEqual(request.body, example.expected);
   }
  });
+ it('reads and updates the white-label link preview with partial fields and explicit resets', async () => {
+  const endpoint = 'https://app.famulor.io/api/v1/custom-domain/link-preview';
+  const calls: IHttpRequestOptions[] = [];
+  const preview = { effective_title: 'Acme Scheduling', effective_description: null };
+  const send = async (request: IHttpRequestOptions) => {
+   calls.push(request);
+   return { statusCode: 200, body: { data: preview } };
+  };
+  const read = await node.execute.call(context({
+   resource: 'Settings', operation: 'getCustomDomainLinkPreview',
+  }, send));
+  assert.deepEqual(read[0][0].json, preview);
+  assert.equal(calls[0].method, 'GET');
+  assert.equal(calls[0].url, endpoint);
+  assert.equal(calls[0].body, undefined);
+
+  for (const patch of [
+   { link_preview_title: 'Acme Scheduling' },
+   { link_preview_description: null },
+  ]) {
+   await node.execute.call(context({
+    resource: 'Settings', operation: 'updateCustomDomainLinkPreview',
+    optionalFields: Object.fromEntries(Object.entries(patch).map(([name, value]) => [`body_${name}`, value])),
+   }, send));
+   const request = calls.at(-1)!;
+   assert.equal(request.method, 'PATCH');
+   assert.equal(request.url, endpoint);
+   assert.deepEqual(request.body, patch);
+  }
+ });
  it('offers the AssemblyAI speech provider on both assistant update actions',()=>{
   for(const id of ['updateAssistant','replaceAssistant']){
    const action=operations.find(operation=>operation.id===id);assert.ok(action,id);
@@ -239,11 +269,11 @@ describe('native API actions',()=>{
    for(const field of fields.filter(field=>field.required))assert.ok(saved.fields.some(old=>old.name===field.name&&old.in===field.in&&old.required),`${saved.id}: added required ${field.name}`);
   }
  });
- it('registers 536 native choices and preserves saved v2 action and webhook nodes',()=>{
-  assert.equal(operations.length,536);assert.equal(catalogSource.count,536);
+ it('registers 538 native choices and preserves saved v2 action and webhook nodes',()=>{
+  assert.equal(operations.length,538);assert.equal(catalogSource.count,538);
   const choices=node.description.properties.filter(prop=>prop.name==='operation').flatMap(prop=>prop.options??[]);
-  assert.equal(choices.length,536);
-  assert.equal(new Set(operations.map(operation=>operation.id )).size,536);
+  assert.equal(choices.length,538);
+  assert.equal(new Set(operations.map(operation=>operation.id )).size,538);
   assert.equal(new Famulor().getNodeType(2).description.version,2);
   assert.equal(new Famulor().getNodeType().description.version,3);
   assert.equal(new FamulorTrigger().getNodeType(2).description.version,2);

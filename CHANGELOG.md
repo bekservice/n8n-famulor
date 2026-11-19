@@ -1,6 +1,7 @@
-## 2.12.0 — 2026-11-18
+## 2.12.0 — 2026-11-19
 
 - Find countries, subdivisions and holiday keys with **Bookings → Get the booking holiday catalog**. Set **Public Holidays** when creating or updating an event type. Use `null` to remove the policy.
+- Read or change the title and description for the workspace’s white-label link preview with the new actions under **Settings**. Send `null` to reset either field. Requires a workspace owner or admin and white-label access.
 - Saved event-type update workflows keep their parameter keys and requests. A new update can send the holiday setting alone.
 - Update to `n8n-nodes-famulor@2.12.0` after publication. npm publication and Creator Portal approval are separate.
 
