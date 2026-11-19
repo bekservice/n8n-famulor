@@ -367,6 +367,19 @@ describe('native API actions',()=>{
   const operation:Parameters<typeof famulorV3Api.buildRequest>[0]['operation']={id:'fixture',method:'POST',path:'/test',summary:'Test',description:'Test',tag:'Test',parameters:[],body:{required:true,fields:[{name:'items',type:'array',required:true}]}};
   assert.throws(()=>famulorV3Api.buildRequest({operation,node:context({},async()=>({})).getNode(),values:{body_items:'a,b'}}),/valid array/);
  });
+ it('executes saved avatar style filters and named catalog styles', async () => {
+  const operation = operations.find(operation => operation.id === 'listAvatarCatalog')!;
+  for (const style of ['custom', 'Studio, North']) {
+   const saved = { resource: operation.tag, operation: operation.id, optionalFields: { query_style: style } };
+   const params = NodeHelpers.getNodeParameters(node.description.properties, saved, true, false, {typeVersion:3}, node.description)!;
+   const requests: IHttpRequestOptions[] = [];
+   await node.execute.call(context(params, async req => {
+    requests.push(req);
+    return {statusCode:200, body:{data:{avatars:[],styles:[style]}}};
+   }));
+   assert.equal(new URL(requests[0].url).searchParams.get('style'), style);
+  }
+ });
  it('preserves saved custom-domain address inputs and allows new hosted addresses',async()=>{
   const operation=operations.find(operation=>operation.id==='createEmailAddress')!;
   for(const savedDomain of [uuid,undefined]){
