@@ -1,0 +1,602 @@
+{
+  "name": "Track weekly completed web chat outcomes by assistant in Google Sheets",
+  "nodes": [
+    {
+      "id": "b7e6c748-1b1b-437f-acd7-5139d45581ef",
+      "name": "Run manual preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "998d5812-4ed4-4c8d-a706-5fbaca6babf4",
+      "name": "Monday report schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "635a0238-cf30-4d55-af8e-e752d8a206aa",
+      "name": "Configure workflow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6d8af142-4bcf-44a2-a50b-87086688cc22",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "1cf0b01f-22dd-4183-a986-3980225d7274",
+      "name": "Build scan window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const c=$input.first().json;const now=new Date();const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));const start=new Date(end.getTime()-7*86400000);return [{json:{...c,windowStart:start.toISOString(),windowEnd:end.toISOString(),runAt:now.toISOString()}}];"
+      }
+    },
+    {
+      "id": "46846eb9-4f13-4148-a54f-43c0c1a525d9",
+      "name": "Read completed web chats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "live_chat"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "from",
+              "value": "={{ $('Build scan window').first().json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Build scan window').first().json.windowEnd }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "f3ccc159-c7f3-41f3-affc-df5cc1a18df5",
+      "name": "Validate completed web chat window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function historyPages(pages, window, channels) {\n\tconst total = pages[0]?.meta?.pagination?.total;\n\tif (!Number.isSafeInteger(total) || total < 0 || total > 2000) throw new Error('History scan is missing its total or exceeds 2,000 conversations. Narrow the window before writing.');\n\tconst start = Date.parse(window.windowStart), end = Date.parse(window.windowEnd);\n\tif (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) throw new Error('Invalid scan window.');\n\tconst all = [], seen = new Set();\n\tfor (let i = 0; i < pages.length; i++) {\n\t\tconst page = pages[i], meta = page?.meta?.pagination;\n\t\tif (!Array.isArray(page?.data) || !meta || meta.total !== total || meta.offset !== i * 200 || meta.limit !== 200 || page.data.length > 200) throw new Error('Inconsistent History pagination. No destination write was attempted.');\n\t\tfor (const row of page.data) {\n\t\t\tconst stamp = Date.parse(row.last_activity_at);\n\t\t\tconst uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);\n\t\t\tif ((row.thread_id != null && !uuid(row.thread_id)) || (row.assistant_id != null && !uuid(row.assistant_id)) || typeof row.last_activity_at !== 'string') throw new Error('Invalid History relation or activity timestamp.');\n\t\t\tif (typeof row.id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.id) || seen.has(row.id) || !channels.includes(row.channel) || !Number.isFinite(stamp) || stamp < start || stamp > end) throw new Error('History row is duplicated, malformed or outside the requested scope.');\n\t\t\tseen.add(row.id);\n\t\t\tall.push(row);\n\t\t}\n\t}\n\tif (all.length !== total) throw new Error('Incomplete History scan. No destination write was attempted.');\n\treturn all.filter(row => Date.parse(row.last_activity_at) < end);\n}\nconst w=$('Build scan window').first().json;const rows=historyPages($input.all().map(i=>i.json),w,['live_chat']);if(rows.some(r=>r.status!=='completed'))throw new Error('Expected completed web chats.');return [{json:{...w,completed:rows.map(r=>({id:r.id,assistant_id:r.assistant_id,duration_sec:r.duration_sec}))}}];"
+      }
+    },
+    {
+      "id": "9c01d45c-b70d-41aa-a7c9-a7092afee27e",
+      "name": "Read unsuccessful web chats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "live_chat"
+            },
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "outcome",
+              "value": "unsuccessful"
+            },
+            {
+              "name": "from",
+              "value": "={{ $('Build scan window').first().json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Build scan window').first().json.windowEnd }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "1222fa95-f2ed-44db-a8ff-19cb6665c3e9",
+      "name": "Build assistant outcome rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function historyPages(pages, window, channels) {\n\tconst total = pages[0]?.meta?.pagination?.total;\n\tif (!Number.isSafeInteger(total) || total < 0 || total > 2000) throw new Error('History scan is missing its total or exceeds 2,000 conversations. Narrow the window before writing.');\n\tconst start = Date.parse(window.windowStart), end = Date.parse(window.windowEnd);\n\tif (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) throw new Error('Invalid scan window.');\n\tconst all = [], seen = new Set();\n\tfor (let i = 0; i < pages.length; i++) {\n\t\tconst page = pages[i], meta = page?.meta?.pagination;\n\t\tif (!Array.isArray(page?.data) || !meta || meta.total !== total || meta.offset !== i * 200 || meta.limit !== 200 || page.data.length > 200) throw new Error('Inconsistent History pagination. No destination write was attempted.');\n\t\tfor (const row of page.data) {\n\t\t\tconst stamp = Date.parse(row.last_activity_at);\n\t\t\tconst uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);\n\t\t\tif ((row.thread_id != null && !uuid(row.thread_id)) || (row.assistant_id != null && !uuid(row.assistant_id)) || typeof row.last_activity_at !== 'string') throw new Error('Invalid History relation or activity timestamp.');\n\t\t\tif (typeof row.id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.id) || seen.has(row.id) || !channels.includes(row.channel) || !Number.isFinite(stamp) || stamp < start || stamp > end) throw new Error('History row is duplicated, malformed or outside the requested scope.');\n\t\t\tseen.add(row.id);\n\t\t\tall.push(row);\n\t\t}\n\t}\n\tif (all.length !== total) throw new Error('Incomplete History scan. No destination write was attempted.');\n\treturn all.filter(row => Date.parse(row.last_activity_at) < end);\n}\nconst w=$('Validate completed web chat window').first().json;const unsuccessful=historyPages($input.all().map(i=>i.json),w,['live_chat']);const ids=new Set(w.completed.map(r=>r.id));if(unsuccessful.some(r=>!ids.has(r.id)||r.status!=='completed'))throw new Error('History changed between scans. No report was written; review and retry the window.');const failed=new Set(unsuccessful.map(r=>r.id));const groups=new Map();for(const r of w.completed){const assistant=typeof r.assistant_id==='string'&&r.assistant_id?r.assistant_id:'unassigned';const g=groups.get(assistant)||{count:0,unsuccessful:0,seconds:0,measured:0};g.count++;if(failed.has(r.id))g.unsuccessful++;if(r.duration_sec!=null){if(!Number.isSafeInteger(r.duration_sec)||r.duration_sec<0||!Number.isSafeInteger(g.seconds+r.duration_sec))throw new Error('Invalid measured duration.');g.seconds+=r.duration_sec;g.measured++;}groups.set(assistant,g);}return [...groups].map(([assistant,g])=>({json:{'Report key':w.windowStart.slice(0,10)+':'+assistant,'Window start':w.windowStart,'Window end':w.windowEnd,'Assistant ID':assistant,'Completed chats':g.count,'Unsuccessful chats':g.unsuccessful,'Measured chats':g.measured,'Average seconds':g.measured?Math.round(g.seconds/g.measured):'',previewOnly:w.previewOnly!==false}}));"
+      }
+    },
+    {
+      "id": "e65ba6d5-7124-4b61-ac36-577b01a189ac",
+      "name": "Preview only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e65ba6d5-7124-4b61-ac36-577b01a189ac",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "102e6cb1-833a-4793-aeec-a16ff9aa0830",
+      "name": "Inspect weekly report",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "4b0e7c33-93b9-4e37-a7fa-8c1b599a467d",
+      "name": "Upsert weekly assistant report",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1760,
+        420
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Report key": "={{ $json['Report key'] }}",
+            "Window start": "={{ $json['Window start'] }}",
+            "Window end": "={{ $json['Window end'] }}",
+            "Assistant ID": "={{ $json['Assistant ID'] }}",
+            "Completed chats": "={{ $json['Completed chats'] }}",
+            "Unsuccessful chats": "={{ $json['Unsuccessful chats'] }}",
+            "Measured chats": "={{ $json['Measured chats'] }}",
+            "Average seconds": "={{ $json['Average seconds'] }}"
+          },
+          "matchingColumns": [
+            "Report key"
+          ],
+          "schema": [
+            {
+              "id": "Report key",
+              "displayName": "Report key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Window start",
+              "displayName": "Window start",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Window end",
+              "displayName": "Window end",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Assistant ID",
+              "displayName": "Assistant ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Completed chats",
+              "displayName": "Completed chats",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Unsuccessful chats",
+              "displayName": "Unsuccessful chats",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Measured chats",
+              "displayName": "Measured chats",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Average seconds",
+              "displayName": "Average seconds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "13adf9dc-0d94-4997-a368-911af97f0423",
+      "name": "Start here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -60
+      ],
+      "parameters": {
+        "content": "## Web chat outcome report\nMonday report for the preceding seven UTC days. Compares all completed web text chats with the unsuccessful-analysis subset, then groups counts and measured durations by assistant. Does not read voice widget calls or copy transcripts/contacts. Preview is enabled.",
+        "width": 620,
+        "height": 240,
+        "color": 7
+      }
+    },
+    {
+      "id": "b1f6b01c-46cd-4d5e-ae01-5d31d86fda0f",
+      "name": "Credentials and report sheet",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        650,
+        -60
+      ],
+      "parameters": {
+        "content": "## Setup\nSelect the same Famulor History-read credential (calls:read) in both read nodes. Choose your Google Sheets connection, spreadsheet and tab. Create headers: Report key, Window start, Window end, Assistant ID, Completed chats, Unsuccessful chats, Measured chats, Average seconds. Match on Report key.",
+        "width": 620,
+        "height": 240,
+        "color": 7
+      }
+    },
+    {
+      "id": "d759ab88-1d8b-493b-a4d8-0573ecbf1a67",
+      "name": "Validation and coverage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        640
+      ],
+      "parameters": {
+        "content": "## Two bounded scans\nEach scan is limited to 2,000 rows. Incomplete pages, wrong channels or a subset not contained in the first scan stop before writes. Missing durations are not counted in the average. Unsuccessful analysis may arrive later; this is not a conversion-rate or exactly-once event feed.",
+        "width": 600,
+        "height": 240,
+        "color": 7
+      }
+    },
+    {
+      "id": "22b1c62a-28d6-46c6-a766-cf1204609b8f",
+      "name": "Enable after destination test",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        640
+      ],
+      "parameters": {
+        "content": "## Re-runs\nInspect preview rows and test the exact export in a designated sheet before disabling previewOnly. Append-or-update uses Window start + Assistant ID as Report key to update re-runs. Avoid concurrent runs and duplicate Report key values in the sheet; Sheets upsert is not a transactional uniqueness guarantee.",
+        "width": 620,
+        "height": 240,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Run manual preview": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monday report schedule": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure workflow": {
+      "main": [
+        [
+          {
+            "node": "Build scan window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build scan window": {
+      "main": [
+        [
+          {
+            "node": "Read completed web chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read completed web chats": {
+      "main": [
+        [
+          {
+            "node": "Validate completed web chat window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate completed web chat window": {
+      "main": [
+        [
+          {
+            "node": "Read unsuccessful web chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read unsuccessful web chats": {
+      "main": [
+        [
+          {
+            "node": "Build assistant outcome rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build assistant outcome rows": {
+      "main": [
+        [
+          {
+            "node": "Preview only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview only?": {
+      "main": [
+        [
+          {
+            "node": "Inspect weekly report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert weekly assistant report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {},
+  "tags": []
+}

@@ -1,0 +1,393 @@
+{
+  "name": "Queue failed or overdue native Famulor email replies as HubSpot tasks",
+  "nodes": [
+    {
+      "id": "af54cafb-f276-4ec4-a751-67db7a7853b9",
+      "name": "Run manual preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "f20bcb0c-e10b-4c17-ab32-c0d1fb909a8f",
+      "name": "Daily review schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "11f206df-59f4-4eba-a5dc-8bc982017d9f",
+      "name": "Configure workflow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ea2735e9-f80b-47e0-aee9-ebb0154eb0be",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "38673fec-e807-4dfa-a546-a36e67381812",
+              "name": "pendingMinutes",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "36d3e884-86fc-4e5b-aeee-60087e381673",
+              "name": "maxTasks",
+              "value": 20,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "3a12cde0-d3a9-4adb-a906-17383f5534b3",
+      "name": "Build scan window",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const c=$input.first().json;const now=new Date();const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));const start=new Date(end.getTime()-1*86400000);return [{json:{...c,windowStart:start.toISOString(),windowEnd:end.toISOString(),runAt:now.toISOString()}}];"
+      }
+    },
+    {
+      "id": "14524940-a532-4f03-a664-e3796ccfc329",
+      "name": "Read native email threads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.famulor.io/api/v1/history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "email"
+            },
+            {
+              "name": "from",
+              "value": "={{ $('Build scan window').first().json.windowStart }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Build scan window').first().json.windowEnd }}"
+            },
+            {
+              "name": "limit",
+              "value": "200"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "offset",
+                    "value": "={{ $pageCount * 200 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !Array.isArray($response.body?.data) || $response.body.data.length < 200 || (($pageCount + 1) * 200 >= $response.body?.meta?.pagination?.total) }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "4ea9cff6-460a-4399-a458-c8c606603234",
+      "name": "Select reply failures and overdue threads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function historyPages(pages, window, channels) {\n\tconst total = pages[0]?.meta?.pagination?.total;\n\tif (!Number.isSafeInteger(total) || total < 0 || total > 2000) throw new Error('History scan is missing its total or exceeds 2,000 conversations. Narrow the window before writing.');\n\tconst start = Date.parse(window.windowStart), end = Date.parse(window.windowEnd);\n\tif (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) throw new Error('Invalid scan window.');\n\tconst all = [], seen = new Set();\n\tfor (let i = 0; i < pages.length; i++) {\n\t\tconst page = pages[i], meta = page?.meta?.pagination;\n\t\tif (!Array.isArray(page?.data) || !meta || meta.total !== total || meta.offset !== i * 200 || meta.limit !== 200 || page.data.length > 200) throw new Error('Inconsistent History pagination. No destination write was attempted.');\n\t\tfor (const row of page.data) {\n\t\t\tconst stamp = Date.parse(row.last_activity_at);\n\t\t\tconst uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);\n\t\t\tif ((row.thread_id != null && !uuid(row.thread_id)) || (row.assistant_id != null && !uuid(row.assistant_id)) || typeof row.last_activity_at !== 'string') throw new Error('Invalid History relation or activity timestamp.');\n\t\t\tif (typeof row.id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.id) || seen.has(row.id) || !channels.includes(row.channel) || !Number.isFinite(stamp) || stamp < start || stamp > end) throw new Error('History row is duplicated, malformed or outside the requested scope.');\n\t\t\tseen.add(row.id);\n\t\t\tall.push(row);\n\t\t}\n\t}\n\tif (all.length !== total) throw new Error('Incomplete History scan. No destination write was attempted.');\n\treturn all.filter(row => Date.parse(row.last_activity_at) < end);\n}\nconst w=$('Build scan window').first().json;const rows=historyPages($input.all().map(i=>i.json),w,['email']);if(!Number.isFinite(w.pendingMinutes)||w.pendingMinutes<5||!Number.isSafeInteger(w.maxTasks)||w.maxTasks<1||w.maxTasks>100)throw new Error('Choose 5+ pending minutes and a task cap from 1 to 100.');const now=Date.parse(w.runAt);if(!Number.isFinite(now))throw new Error('Invalid run time.');const cases=rows.filter(r=>r.reply_status==='failed'||(r.reply_status==='pending'&&now-Date.parse(r.last_activity_at)>=w.pendingMinutes*60000));if(cases.length>w.maxTasks)throw new Error('Task cap exceeded. Narrow the window and review before writing.');return cases.map(r=>({json:{subject:'Review Famulor email reply '+r.id,description:'Conversation '+(r.thread_id||r.id)+' | History record '+r.id+' | state '+r.reply_status+' | last activity '+r.last_activity_at+'. Review the thread in Famulor before replying. No email addresses, subjects, bodies or raw delivery errors are copied. Re-running this window can duplicate the task.',dueAt:new Date(now+86400000).toISOString(),previewOnly:w.previewOnly!==false}}));"
+      }
+    },
+    {
+      "id": "86f8e6be-c381-47ef-a2da-90f5813c66fd",
+      "name": "Preview only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "86f8e6be-c381-47ef-a2da-90f5813c66fd",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8d1893df-5131-49bc-a4c8-7c6df3645be0",
+      "name": "Inspect follow-up tasks",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        180
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "f0e10955-e820-4f9d-a0dd-90d9d5721601",
+      "name": "Create HubSpot follow-up task",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        420
+      ],
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "engagement",
+        "operation": "create",
+        "type": "task",
+        "dueDate": "={{ $json.dueAt }}",
+        "metadata": {
+          "subject": "={{ $json.subject }}",
+          "body": "={{ $json.description }}",
+          "status": "NOT_STARTED"
+        },
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "0ec4adb2-56ef-47c4-a4e7-25c5392434f2",
+      "name": "Start here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -50
+      ],
+      "parameters": {
+        "content": "## Native email reply follow-up\nCreate internal CRM tasks for failed or overdue auto-replies in native Famulor email. Does not watch Gmail/Outlook connector threads, send replies or create CRM contacts. Preview is enabled; empty results do not write.",
+        "width": 600,
+        "height": 220,
+        "color": 7
+      }
+    },
+    {
+      "id": "84a31381-305c-47fb-aabe-f03dd95ec342",
+      "name": "Credentials and thresholds",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        650,
+        -50
+      ],
+      "parameters": {
+        "content": "## Setup\nSelect a Famulor History-read HTTP Header Auth credential (calls:read). Select HubSpot Service Key credentials with engagement/task creation access. Set pendingMinutes (minimum 5) and maxTasks (1–100). No contact association or real owner is bundled.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "ec80428b-cb3e-4e04-a0b4-4d0840450c22",
+      "name": "Scope and privacy",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        650,
+        640
+      ],
+      "parameters": {
+        "content": "## Scan and classification\nReads previous UTC-day activity, validates all pages and selects failed replies or pending replies older than the threshold at run time. Stops before all writes if the task cap is exceeded. Copies references and state only, not message content or raw error text.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "de551135-7d88-4273-ae99-c62b8581eb34",
+      "name": "Destination test and repeats",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        640
+      ],
+      "parameters": {
+        "content": "## Before enabling writes\nTest the exact export in a designated HubSpot test area and review task permissions, ownership and notifications. Tasks are unassociated by default. Re-running the same window can create duplicates. This is a windowed review queue, not a complete historic backlog monitor.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Run manual preview": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily review schedule": {
+      "main": [
+        [
+          {
+            "node": "Configure workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure workflow": {
+      "main": [
+        [
+          {
+            "node": "Build scan window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build scan window": {
+      "main": [
+        [
+          {
+            "node": "Read native email threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read native email threads": {
+      "main": [
+        [
+          {
+            "node": "Select reply failures and overdue threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select reply failures and overdue threads": {
+      "main": [
+        [
+          {
+            "node": "Preview only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview only?": {
+      "main": [
+        [
+          {
+            "node": "Inspect follow-up tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create HubSpot follow-up task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {},
+  "tags": []
+}

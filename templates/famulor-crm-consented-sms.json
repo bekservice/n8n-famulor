@@ -1,0 +1,405 @@
+{
+  "name": "Preview and send consent-checked SMS follow-ups from CRM lead events",
+  "nodes": [
+    {
+      "id": "05197bf8-9245-4ec1-a691-9c28eeb2eeeb",
+      "name": "Authenticated CRM event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        240
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "famulor-crm-sms-follow-up",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "8e19c746-140c-4ce0-a53d-ebfaf72622f6",
+      "name": "Run sample preview",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "2dfffac6-0bc1-45c6-acc7-325c50f72989",
+      "name": "Synthetic lead example",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        500
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{sampleInput:true,external_id:'example-event-1',phone:'+15550100000',consent_sms:true}}];"
+      }
+    },
+    {
+      "id": "5d7d8790-0400-4ee1-a2f3-83ec74c72def",
+      "name": "Configure SMS",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3fd8f3e1-e5be-4709-af7c-810bca9227f8",
+              "name": "previewOnly",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "90d0961d-0f3c-4a80-a1f1-4cc9b7154ba6",
+              "name": "fromNumberId",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "5e47f123-f14b-4cf3-a272-20580e24b53f",
+              "name": "messageText",
+              "value": "Thanks for contacting us. Our team will follow up shortly.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "c4110d4d-744e-4a24-a7e1-3d8a598b90bd",
+      "name": "Check consent and normalize leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const seen=new Set();return $input.all().map(item=>{const c=item.json;const raw=c.body&&typeof c.body==='object'&&!Array.isArray(c.body)?c.body:c;const phone=typeof raw.phone==='string'?raw.phone.trim():'';const event=typeof raw.external_id==='string'?raw.external_id.trim():'';const text=typeof c.messageText==='string'?c.messageText.trim():'';const reasons=[];if(raw.consent_sms!==true)reasons.push('Explicit SMS consent is required');if(!/^\\+[1-9]\\d{7,14}$/.test(phone))reasons.push('E.164 phone is required');if(!event||event.length>120)reasons.push('A stable CRM event ID is required');if(seen.has(event))reasons.push('Duplicate event in this execution');if(!text||text.length>1600)reasons.push('Message must contain 1–1600 characters');seen.add(event);return {json:{external_id:event,to:phone,body:text,from_number_id:c.fromNumberId,eligible:reasons.length===0,reasons,previewOnly:c.previewOnly!==false||c.sampleInput===true}};});"
+      }
+    },
+    {
+      "id": "a4b62e3d-5e79-4469-a475-a3d24277d603",
+      "name": "Eligible for SMS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a4b62e3d-5e79-4469-a475-a3d24277d603",
+              "leftValue": "={{ $json.eligible }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e4a49fdc-1919-4c99-aad9-3bf027b7d0c6",
+      "name": "Inspect rejected lead",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        560
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "88d09301-1067-43a2-a045-3f88c073abf1",
+      "name": "Preview or sample?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "88d09301-1067-43a2-a045-3f88c073abf1",
+              "leftValue": "={{ $json.previewOnly }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b884d5fc-94b7-41fa-a385-f694d3a0f5a5",
+      "name": "Inspect SMS preview",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "770f45c2-2cfb-4414-a172-786b07f3e5fa",
+      "name": "Validate configured sender",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        340
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(item=>{if(typeof item.json.from_number_id!=='string'||!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(item.json.from_number_id))throw new Error('Select an outbound SMS-capable Famulor number before enabling writes.');return item;});"
+      }
+    },
+    {
+      "id": "f324276b-a6c6-469c-ac9c-93812647d85a",
+      "name": "Send authorized SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        340
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.famulor.io/api/v1/sms/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { from_number_id: $json.from_number_id, to: $json.to, body: $json.body } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "b008681d-4823-4f14-a8bc-dffbe95880b6",
+      "name": "Start here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -60
+      ],
+      "parameters": {
+        "content": "## Consent-checked CRM SMS follow-up\nFor trusted CRM lead events with phone, external_id and boolean consent_sms. Validates the event and exposes rejected reasons. Preview is enabled. The manual example is permanently preview-only, even if writes are enabled later.",
+        "width": 620,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "d04b1b3b-20ec-4846-aae1-ca23218a5c6f",
+      "name": "Credentials and sender",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        650,
+        -60
+      ],
+      "parameters": {
+        "content": "## Setup\nConfigure Header Auth on the inbound webhook. Select a separate Famulor HTTP Header Auth credential with sms:send on the send node. Choose an existing outbound SMS-capable number UUID in Configure SMS. No sender or real recipient is bundled.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "d2a5262d-c247-4950-ac91-40dbda43590b",
+      "name": "Example payload",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        440,
+        650
+      ],
+      "parameters": {
+        "content": "## Expected trusted CRM payload\nUse synthetic records first. Example: external_id = example-event-1, phone = +15550100000, consent_sms = true (boolean). String \"true\" is rejected. Edit messageText in Configure SMS. The webhook acknowledgement is not proof of delivery.",
+        "width": 510,
+        "height": 230,
+        "color": 7
+      }
+    },
+    {
+      "id": "a478a0f7-c8bb-4e67-a349-158b1d4431bb",
+      "name": "Activation and repeats",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        650
+      ],
+      "parameters": {
+        "content": "## Before enabling writes\nRun the exact export against an authorized test sender and recipient. SMS consumes Famulor credits. Source CRM must send each consented event once: duplicates are detected only within one execution, not across requests. An uncertain send must be inspected before retrying.",
+        "width": 620,
+        "height": 240,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Authenticated CRM event": {
+      "main": [
+        [
+          {
+            "node": "Configure SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run sample preview": {
+      "main": [
+        [
+          {
+            "node": "Synthetic lead example",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthetic lead example": {
+      "main": [
+        [
+          {
+            "node": "Configure SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure SMS": {
+      "main": [
+        [
+          {
+            "node": "Check consent and normalize leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check consent and normalize leads": {
+      "main": [
+        [
+          {
+            "node": "Eligible for SMS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eligible for SMS?": {
+      "main": [
+        [
+          {
+            "node": "Preview or sample?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Inspect rejected lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview or sample?": {
+      "main": [
+        [
+          {
+            "node": "Inspect SMS preview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate configured sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate configured sender": {
+      "main": [
+        [
+          {
+            "node": "Send authorized SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC"
+  },
+  "pinData": {},
+  "tags": []
+}
